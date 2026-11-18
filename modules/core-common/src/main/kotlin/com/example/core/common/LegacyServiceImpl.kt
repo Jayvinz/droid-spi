@@ -3,10 +3,10 @@ package com.example.core.common
 import com.example.core.api.LegacyService
 
 /**
- * 这个 provider 没有用 @ServiceProvider 注解，
- * 而是由 core-common 的 META-INF/services 资源配置声明 ——
- * 模拟第三方 jar / aar 按 JDK SPI 约定集成的场景。
+ * This provider has no @ServiceProvider annotation. It is declared by core-common's
+ * META-INF/services resource, simulating a third-party jar / aar integrated through the
+ * JDK SPI convention.
  */
 class LegacyServiceImpl : LegacyService {
-    override fun describe(): String = "来自 META-INF/services 的 provider"
+    override fun describe(): String = "A provider from META-INF/services"
 }

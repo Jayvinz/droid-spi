@@ -36,13 +36,13 @@ class MainActivity : Activity() {
                 "DOWNLOADING ${state.bytesDownloaded()}/${state.totalBytesToDownload()}"
             SplitInstallSessionStatus.DOWNLOADED -> "DOWNLOADED"
             SplitInstallSessionStatus.INSTALLING -> "INSTALLING"
-            SplitInstallSessionStatus.INSTALLED -> "INSTALLED · 下次 load 自动生效"
+            SplitInstallSessionStatus.INSTALLED -> "INSTALLED · takes effect on the next load"
             SplitInstallSessionStatus.FAILED -> "FAILED errorCode=${state.errorCode()}"
             SplitInstallSessionStatus.CANCELED -> "CANCELED"
             SplitInstallSessionStatus.REQUIRES_USER_CONFIRMATION -> "REQUIRES_USER_CONFIRMATION"
             else -> "OTHER(${state.status()})"
         }
-        append("安装状态：$status")
+        append("Install status: $status")
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -61,7 +61,7 @@ class MainActivity : Activity() {
         })
 
         root.addView(TextView(this).apply {
-            text = "注册表在 Application.onCreate 中直接实例化"
+            text = "The registry is instantiated directly in Application.onCreate"
             textSize = 12f
             setTextColor(Color.GRAY)
             setPadding(0, dp(4), 0, dp(12))
@@ -69,8 +69,8 @@ class MainActivity : Activity() {
 
         root.addView(LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            addWeighted(actionButton("重新渲染") { render() })
-            addWeighted(actionButton("相机模块") { openCamera() })
+            addWeighted(actionButton("Re-render") { render() })
+            addWeighted(actionButton("Camera module") { openCamera() })
         })
 
         output = TextView(this).apply {
@@ -106,14 +106,14 @@ class MainActivity : Activity() {
             camera.open(this)
             return
         }
-        append("CameraService 不可用，发起动态模块下载…")
+        append("CameraService unavailable; requesting the dynamic module…")
         val request = SplitInstallRequest.newBuilder()
             .addModule("feature_camera")
             .build()
         installManager.startInstall(request)
             .addOnFailureListener { e ->
-                append("startInstall 失败：${e.message}（非 Play 渠道时属预期）")
-                toast("当前环境不支持动态分发")
+                append("startInstall failed: ${e.message} (expected on non-Play channels)")
+                toast("Dynamic delivery is not supported in this environment")
             }
     }
 
@@ -121,9 +121,9 @@ class MainActivity : Activity() {
         val sb = StringBuilder(log)
 
         sb.appendLine()
-        sb.appendLine("初始化: ${ServiceLoader.isInitialized()}")
+        sb.appendLine("Initialized: ${ServiceLoader.isInitialized()}")
         sb.appendLine()
-        sb.appendLine("── provider 配置表 ───────────")
+        sb.appendLine("── provider table ───────────")
         ServiceLoader.snapshot().forEach { (api, key, state) ->
             val name = api.substringAfterLast('.')
             val k = if (key.isEmpty()) "\"\"" else key
@@ -131,7 +131,7 @@ class MainActivity : Activity() {
         }
 
         sb.appendLine()
-        sb.appendLine("── 服务调用 ────────────────")
+        sb.appendLine("── service calls ────────────────")
         val home = ServiceLoader.load(HomeService::class.java)
         val vip = ServiceLoader.load(HomeService::class.java, "vip")
         val account = ServiceLoader.load(AccountService::class.java)
@@ -142,12 +142,12 @@ class MainActivity : Activity() {
         sb.appendLine("Home(vip)      = " + (vip?.title() ?: "null"))
         sb.appendLine("Account        = " + (account?.let { "${it.userName()} / ${it.level()}" } ?: "null"))
         sb.appendLine("Account(guest) = " + (guest?.let { "${it.userName()} / ${it.level()}" } ?: "null"))
-        sb.appendLine("Camera         = " + (camera?.description() ?: "null（模块未安装）"))
+        sb.appendLine("Camera         = " + (camera?.description() ?: "null (module not installed)"))
         val legacy = ServiceLoader.load(LegacyService::class.java)
         sb.appendLine("Legacy(SPI)    = " + (legacy?.describe() ?: "null"))
 
         sb.appendLine()
-        sb.appendLine("── JDK 风格 Provider API ────")
+        sb.appendLine("── JDK-style Provider API ────")
         val first = ServiceLoader.findFirst(HomeService::class.java)
         sb.appendLine("findFirst = " + (first?.type()?.simpleName ?: "null"))
         ServiceLoader.stream(HomeService::class.java).forEach { p ->

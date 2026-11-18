@@ -7,8 +7,9 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * 不依赖真机，用一个可切换"模块是否已安装"的假配置表来验证懒探测：
- * 未安装时不缓存 MISSING，安装后下一次调用自然就能成功；只有 `<clinit>` 失败会被记住。
+ * No device required. A fake configuration table that can toggle "module installed" verifies
+ * lazy probing: MISSING is not cached, so the next call after installation naturally succeeds;
+ * only `<clinit>` failures are remembered.
  */
 class ProviderRegistryTest {
 
@@ -16,7 +17,7 @@ class ProviderRegistryTest {
     private class Impl : Api
     private class VipImpl : Api
 
-    /** 模拟动态模块：installed=false 时 providerOf / newProvider 抛 NoClassDefFoundError */
+    /** Simulates a dynamic module: when installed=false, providerOf / newProvider throw NoClassDefFoundError */
     private class FakeConfiguration(
         var installed: Boolean = false,
         var initFails: Boolean = false,
@@ -52,14 +53,14 @@ class ProviderRegistryTest {
     }
 
     @Test
-    fun `模块未安装时是 MISSING，安装后无需 refresh 直接 load 成功`() {
+    fun `missing until installed, load succeeds without refresh`() {
         val configuration = FakeConfiguration(installed = false)
         val registry = ProviderRegistry(configuration)
 
         assertNull(registry.load(Api::class.java))
         assertEquals(ProviderState.MISSING, registry.stateOf(Api::class.java, ""))
 
-        // 模拟 SplitInstallSessionStatus.INSTALLED，之后没有任何 refresh 调用
+        // Simulates SplitInstallSessionStatus.INSTALLED; no refresh call happens afterwards
         configuration.installed = true
 
         assertEquals(ProviderState.READY, registry.stateOf(Api::class.java, ""))
@@ -67,7 +68,7 @@ class ProviderRegistryTest {
     }
 
     @Test
-    fun `load 直接实例化，不做预探测`() {
+    fun `load instantiates directly without a pre-probe`() {
         val configuration = FakeConfiguration(installed = true)
         val registry = ProviderRegistry(configuration)
 
@@ -78,7 +79,7 @@ class ProviderRegistryTest {
     }
 
     @Test
-    fun `未安装时每次 load 都会重新尝试，不缓存 MISSING`() {
+    fun `retries every load while uninstalled, no MISSING cache`() {
         val configuration = FakeConfiguration(installed = false)
         val registry = ProviderRegistry(configuration)
 
@@ -92,7 +93,7 @@ class ProviderRegistryTest {
     }
 
     @Test
-    fun `clinit 失败后标 DEAD，后续不再重试`() {
+    fun `marks DEAD after a clinit failure and stops retrying`() {
         val configuration = FakeConfiguration(installed = true, initFails = true)
         val registry = ProviderRegistry(configuration)
 
@@ -106,7 +107,7 @@ class ProviderRegistryTest {
     }
 
     @Test
-    fun `未注册的 key 返回 null`() {
+    fun `returns null for an unregistered key`() {
         val configuration = FakeConfiguration(installed = true)
         val registry = ProviderRegistry(configuration)
 
@@ -117,7 +118,7 @@ class ProviderRegistryTest {
     }
 
     @Test
-    fun `stream 只暴露可用的 provider 且 type 不实例化`() {
+    fun `stream exposes ready providers only and type does not instantiate`() {
         val configuration = FakeConfiguration(installed = true)
         val registry = ProviderRegistry(configuration)
 
@@ -132,7 +133,7 @@ class ProviderRegistryTest {
     }
 
     @Test
-    fun `模块安装后 stream 无需 refresh 自动出现`() {
+    fun `stream picks up an installed module without refresh`() {
         val configuration = FakeConfiguration(installed = false)
         val registry = ProviderRegistry(configuration)
 

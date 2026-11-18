@@ -1,8 +1,9 @@
 package com.example.core.api
 
 /**
- * 演示"按标准 SPI 约定、通过 META-INF/services 声明 provider"的接口。
- * 接口本身仍在 base，provider 实现类位于 core-common。
+ * Demonstrates an interface whose provider is declared through standard SPI
+ * (`META-INF/services`). The interface itself stays in base; the implementation lives in
+ * core-common.
  */
 interface LegacyService {
     fun describe(): String

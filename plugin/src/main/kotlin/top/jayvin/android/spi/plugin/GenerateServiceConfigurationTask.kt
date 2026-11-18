@@ -14,9 +14,11 @@ import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.TaskAction
 
 /**
- * app 模块的聚合任务：把所有模块的清单合并成一张表，生成固定全类名的 provider configuration class。
+ * Aggregation task for the app module: merges every module's manifest into one table and
+ * generates the fixed-FQN provider configuration class.
  *
- * 只读文本清单、只写 class 目录，不读 `ScopedArtifact.CLASSES`，所以不存在"边读边写"的环。
+ * It only reads text manifests and only writes a class directory; it does not read
+ * `ScopedArtifact.CLASSES`, so there is no read-while-write cycle.
  */
 @CacheableTask
 abstract class GenerateServiceConfigurationTask : DefaultTask() {
@@ -42,13 +44,13 @@ abstract class GenerateServiceConfigurationTask : DefaultTask() {
             file.readLines().filter { it.isNotBlank() }.forEach { line ->
                 val entry = ProviderEntry.decode(line)
                 if (entry.service.isEmpty() || entry.provider.isEmpty()) {
-                    throw GradleException("清单行非法（${file.name}）：$line")
+                    throw GradleException("Invalid manifest line (${file.name}): $line")
                 }
                 val prev = bySlot.put(entry.service to entry.key, entry)
                 if (prev != null) {
                     throw GradleException(
-                        "重复注册：service ${entry.service} 的 key=\"${entry.key}\" 被 " +
-                            "${prev.provider} 与 ${entry.provider} 同时实现"
+                        "Duplicate registration: service ${entry.service} key=\"${entry.key}\" is implemented by " +
+                            "both ${prev.provider} and ${entry.provider}"
                     )
                 }
             }
@@ -59,7 +61,7 @@ abstract class GenerateServiceConfigurationTask : DefaultTask() {
         val simpleName = className.get()
 
         if (entries.isEmpty()) {
-            logger.warn("spi: 没有扫描到任何 @ServiceProvider，provider configuration 为空")
+            logger.warn("spi: no @ServiceProvider was found; the provider configuration is empty")
         }
 
         val bytes = ConfigurationClassGenerator.generate(pkg, simpleName, entries)
@@ -69,6 +71,6 @@ abstract class GenerateServiceConfigurationTask : DefaultTask() {
         dir.mkdirs()
         dir.resolve("$simpleName.class").writeBytes(bytes)
 
-        logger.lifecycle("spi: ${pkg}.${simpleName} 生成完成，共 ${entries.size} 条 provider")
+        logger.lifecycle("spi: generated ${pkg}.${simpleName} with ${entries.size} provider entries")
     }
 }

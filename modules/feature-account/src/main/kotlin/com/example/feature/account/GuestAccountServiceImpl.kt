@@ -6,7 +6,7 @@ import top.jayvin.android.spi.ServiceProvider
 @ServiceProvider(service = AccountService::class, key = "guest")
 class GuestAccountServiceImpl : AccountService {
 
-    override fun userName(): String = "访客"
+    override fun userName(): String = "Guest"
 
-    override fun level(): String = "未登录"
+    override fun level(): String = "Not signed in"
 }

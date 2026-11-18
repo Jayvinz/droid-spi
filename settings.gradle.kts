@@ -1,6 +1,6 @@
 pluginManagement {
     repositories {
-        // 插件本体发布到这里；demo 模块从同一仓库消费插件
+        // The framework is published here; demo modules consume the plugin from the same repository
         maven {
             name = "localSpi"
             url = uri("local-repo")
@@ -17,7 +17,7 @@ plugins {
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {
-        // annotation / runtime 从本地仓库解析
+        // annotation / runtime are resolved from the local repository
         maven {
             name = "localSpi"
             url = uri("local-repo")
@@ -29,16 +29,16 @@ dependencyResolutionManagement {
 
 rootProject.name = "android-spi"
 
-// 插件本体（library 模块）
+// Framework modules (libraries)
 include(":annotation")
 include(":runtime")
 include(":plugin")
 include(":configuration-stub")
 
-// demo 主模块
+// Demo main module
 include(":app")
 
-// demo 非主模块，统一放在 modules/ 下
+// Demo non-main modules, all under modules/
 include(":modules:core-api")
 include(":modules:core-common")
 include(":modules:feature-home")

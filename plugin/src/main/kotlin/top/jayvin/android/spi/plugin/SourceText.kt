@@ -1,12 +1,12 @@
 package top.jayvin.android.spi.plugin
 
 /**
- * 源码文本的两级处理。两个函数**都必须保持字符串长度不变**，
- * 这样同一处偏移量在 clean / masked 两份文本里指向同一个字符。
+ * Two levels of source-text processing. Both functions **must preserve string length**,
+ * so the same offset points at the same character in the clean / masked texts.
  *
- * - [stripComments]：注释替换为空格，**字符串原样保留**（key 的取值要从这里读）
- * - [maskStrings]：字符串内容（含引号）替换为空格，保留换行（结构扫描用，避免字符串里的
- *   "class" / "@ServiceProvider" 造成误判）
+ * - [stripComments]: replaces comments with spaces, **keeps strings intact** (key values are read here)
+ * - [maskStrings]: replaces string contents (including quotes) with spaces while preserving newlines
+ *   (for structural scanning, so "class" / "@ServiceProvider" inside strings cannot cause false hits)
  */
 internal object SourceText {
 

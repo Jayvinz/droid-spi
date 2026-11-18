@@ -1,7 +1,8 @@
 plugins {
     id("com.android.library")
     id("org.jetbrains.kotlin.android")
-    // core-common 没有 @ServiceProvider 注解，但需要它来扫描 src/main/resources/META-INF/services
+    // core-common has no @ServiceProvider annotations, but needs the plugin to scan
+    // src/main/resources/META-INF/services
     id("top.jayvin.android.spi")
 }
 

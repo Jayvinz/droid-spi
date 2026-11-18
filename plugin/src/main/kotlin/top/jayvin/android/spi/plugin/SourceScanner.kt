@@ -2,7 +2,7 @@ package top.jayvin.android.spi.plugin
 
 import org.gradle.api.GradleException
 
-/** 清单里的一行：`service \t provider \t key \t factory`（key 为空串表示默认变体，factory 为空表示走无参构造） */
+/** One manifest line: `service \t provider \t key \t factory` (an empty key means the default variant; an empty factory means no-arg construction) */
 internal data class ProviderEntry(
     val service: String,
     val provider: String,
@@ -14,15 +14,15 @@ internal data class ProviderEntry(
     companion object {
         fun decode(line: String): ProviderEntry {
             val cols = line.split('\t')
-            require(cols.size >= 3) { "清单行格式错误：$line" }
+            require(cols.size >= 3) { "Malformed manifest line: $line" }
             return ProviderEntry(cols[0], cols[1], cols[2], cols.getOrElse(3) { "" })
         }
     }
 }
 
 /**
- * 本模块内所有顶层类型的索引，用于"没有显式 import 也能猜对全限定名"。
- * 只做提示，猜不到就退回同包假设。
+ * An index of all top-level types declared in this module, used to "guess the FQN even without
+ * an explicit import". It is only a hint; when it cannot guess, it falls back to the same package.
  */
 internal class TypeIndex {
     private val declared = HashSet<String>()
@@ -39,22 +39,23 @@ internal class TypeIndex {
         bySimpleName[simple]?.takeIf { it.size == 1 }?.first()
 }
 
-/** 一个源文件的一次预处理结果：类型索引与注解扫描共用，避免重复读盘与重复词法处理。 */
+/** One preprocessing result per source file, shared by the type index and the annotation scan to avoid re-reading and re-lexing. */
 internal class SourceDocument(val fileName: String, raw: String) {
     val clean: String = SourceText.stripComments(raw)
     val masked: String = SourceText.maskStrings(clean)
 }
 
 /**
- * 源码扫描器。只读 `src/main` 下的 .kt / .java，不碰任何依赖 jar。
+ * Source scanner. It reads only `.kt` / `.java` under `src/main` and never touches dependency jars.
  *
- * 明确不支持的写法会**直接构建失败**，而不是静默生成错误的配置表：
- * - `import a.b.*` 且该类型未显式 import、也不在本模块内（无法确定全限定名）
- * - 嵌套类、`typealias` 作为 `@ServiceProvider` 的 service
+ * Explicitly unsupported forms **fail the build** instead of silently generating a wrong table:
+ * - `import a.b.*` where the type is neither explicitly imported nor declared in this module
+ *   (the FQN cannot be determined)
+ * - nested classes or `typealias` as the `@ServiceProvider` service
  */
 internal class SourceScanner(private val index: TypeIndex) {
 
-    /** [body] 为 null 表示该类没有大括号类体（Kotlin `class Foo : Bar`）。 */
+    /** A null [body] means the class has no brace-delimited body (Kotlin `class Foo : Bar`). */
     private data class ClassDecl(val name: String, val body: IntRange?)
 
     fun scan(doc: SourceDocument): List<ProviderEntry> {
@@ -68,7 +69,8 @@ internal class SourceScanner(private val index: TypeIndex) {
         var cursor = 0
         var line = 1
 
-        // 注解匹配位置递增，游标只前进不回退，整体 O(文件长度)
+        // Annotation match positions increase monotonically, and the cursor only moves forward,
+        // so this is O(file length) overall.
         fun lineAt(offset: Int): Int {
             while (cursor < offset) {
                 if (masked[cursor] == '\n') line++
@@ -95,14 +97,14 @@ internal class SourceScanner(private val index: TypeIndex) {
         return out
     }
 
-    // ── 参数解析 ──────────────────────────────────────────────────
+    // ── Argument parsing ──────────────────────────────────────────
     private fun parseArgs(args: String, where: String): Pair<String, String> {
         val parts = splitTopLevel(args)
         var serviceExpr: String? = null
         var key = ""
 
-        // 注解改成 Java 后，Kotlin 调用方必须写命名参数 service = X::class；
-        // Java 调用方两种写法都可以：@ServiceProvider(X.class) 或 service = X.class。
+        // Since the annotation is Java, Kotlin callers must use the named argument service = X::class;
+        // Java callers accept both forms: @ServiceProvider(X.class) or service = X.class.
         parts.map { it.trim() }.filter { it.isNotEmpty() }.forEach { part ->
             when {
                 part.startsWith("service") && part.contains('=') ->
@@ -110,20 +112,20 @@ internal class SourceScanner(private val index: TypeIndex) {
 
                 part.startsWith("key") && part.contains('=') ->
                     key = stringLiteral(part.substringAfter('='))
-                        ?: throw GradleException("$where: key 必须是字符串字面量，实际是 `$part`")
+                        ?: throw GradleException("$where: key must be a string literal, got `$part`")
 
                 serviceExpr == null && classLiteralName(part) != null -> serviceExpr = part
 
                 serviceExpr != null && part.startsWith("\"") ->
                     key = stringLiteral(part)
-                        ?: throw GradleException("$where: key 必须是字符串字面量，实际是 `$part`")
+                        ?: throw GradleException("$where: key must be a string literal, got `$part`")
 
-                else -> throw GradleException("$where: 无法识别的 @ServiceProvider 参数 `$part`")
+                else -> throw GradleException("$where: unrecognized @ServiceProvider argument `$part`")
             }
         }
 
         if (serviceExpr.isNullOrEmpty()) {
-            throw GradleException("$where: @ServiceProvider 缺少 service 参数")
+            throw GradleException("$where: @ServiceProvider is missing the service argument")
         }
         return serviceExpr!! to key
     }
@@ -131,7 +133,7 @@ internal class SourceScanner(private val index: TypeIndex) {
     private fun stringLiteral(text: String): String? =
         STRING_LITERAL.find(text)?.groupValues?.get(1)
 
-    /** 按顶层逗号切分，忽略括号/尖括号/字符串内部的逗号 */
+    /** Split on top-level commas, ignoring commas inside brackets, angle brackets or strings. */
     private fun splitTopLevel(text: String): List<String> {
         val out = ArrayList<String>()
         val sb = StringBuilder()
@@ -158,7 +160,7 @@ internal class SourceScanner(private val index: TypeIndex) {
         return out
     }
 
-    /** `Home::class` / `Home::class.java` / `Home.class` → `Home`；不是类字面量时返回 null */
+    /** `Home::class` / `Home::class.java` / `Home.class` → `Home`; returns null when it is not a class literal. */
     private fun classLiteralName(expr: String): String? {
         val trimmed = expr.trim()
         return when {
@@ -169,13 +171,13 @@ internal class SourceScanner(private val index: TypeIndex) {
         }
     }
 
-    /** service 参数必须是类字面量；返回去掉字面量后缀的原始名字。 */
+    /** The service argument must be a class literal; returns the raw name with the literal suffix removed. */
     private fun parseServiceType(expr: String, where: String): String {
         val clean = (classLiteralName(expr)
-            ?: throw GradleException("$where: service 参数必须写成 `X::class` 或 `X.class`，实际是 `$expr`"))
+            ?: throw GradleException("$where: the service argument must be `X::class` or `X.class`, got `$expr`"))
             .trim()
         if (clean.isEmpty() || clean.contains('<') || clean.contains('*')) {
-            throw GradleException("$where: 无法解析 service 类型 `$expr`")
+            throw GradleException("$where: cannot parse service type `$expr`")
         }
         return clean
     }
@@ -189,7 +191,7 @@ internal class SourceScanner(private val index: TypeIndex) {
         where: String,
     ): String {
         val raw = parseServiceType(expr, where)
-        // 已经带包名（或嵌套类型）时按全限定名处理
+        // Already qualified (or a nested type): treat it as a fully-qualified name
         if (raw.contains('.')) return raw
 
         explicitImports[raw]?.let { return it }
@@ -199,22 +201,23 @@ internal class SourceScanner(private val index: TypeIndex) {
 
         if (wildcards.isNotEmpty()) {
             throw GradleException(
-                "$where: 无法确定 `$raw` 的全限定名（存在 `import ${wildcards.first()}.*`，" +
-                    "且该类型不在本模块内）。请改成显式 import 或写全限定名。file=$fileName"
+                "$where: cannot determine the FQN of `$raw` (there is `import ${wildcards.first()}.*` " +
+                    "and the type is not in this module). Use an explicit import or a fully-qualified name. file=$fileName"
             )
         }
         return samePkg
     }
 
-    // ── 类声明与工厂方法 ──────────────────────────────────────────
+    // ── Class declarations and factory methods ────────────────────
     private fun findClassDecl(masked: String, from: Int, where: String): ClassDecl {
         val m = DECL_RE.find(masked, from)
-            ?: throw GradleException("$where: @ServiceProvider 之后没有找到类声明")
+            ?: throw GradleException("$where: no class declaration found after @ServiceProvider")
         val name = m.groupValues[2]
 
         val brace = masked.indexOf('{', m.range.last + 1)
         if (brace < 0 || brace - m.range.last > MAX_CLASS_HEADER) return ClassDecl(name, null)
-        // 中间又出现新的类声明，说明当前类没有类体（Kotlin `class Foo : Bar` 无大括号）
+        // Another class declaration appears in between, so the current class has no body
+        // (Kotlin `class Foo : Bar` without braces).
         if (DECL_RE.containsMatchIn(masked.substring(m.range.last + 1, brace))) {
             return ClassDecl(name, null)
         }
@@ -228,7 +231,7 @@ internal class SourceScanner(private val index: TypeIndex) {
         val idx = indexOfIn(masked, "@ProviderFactory", body.first, end)
         if (idx < 0) return ""
         if (indexOfIn(masked, "@ProviderFactory", idx + 1, end) >= 0) {
-            throw GradleException("$where: 一个类里只能有一个 @ProviderFactory")
+            throw GradleException("$where: a class may contain only one @ProviderFactory")
         }
 
         val tail = masked.substring(idx, minOf(idx + MAX_FACTORY_WINDOW, end))
@@ -238,22 +241,22 @@ internal class SourceScanner(private val index: TypeIndex) {
             val between = tail.substring(0, kotlinFun.range.first)
             if (!between.contains("@JvmStatic")) {
                 throw GradleException(
-                    "$where: Kotlin 的 @ProviderFactory 必须配合 @JvmStatic（写成 companion object 里的" +
-                        " `@ProviderFactory @JvmStatic fun create(): 本类`）"
+                    "$where: Kotlin's @ProviderFactory must be paired with @JvmStatic (write it as " +
+                        "`@ProviderFactory @JvmStatic fun create(): ThisClass` inside a companion object)"
                 )
             }
             return kotlinFun.groupValues[1]
         }
 
         val staticIdx = STATIC_RE.find(tail)
-            ?: throw GradleException("$where: @ProviderFactory 必须标在静态方法上")
+            ?: throw GradleException("$where: @ProviderFactory must be placed on a static method")
         val afterStatic = tail.substring(staticIdx.range.last + 1)
         val javaFun = JAVA_FUN.find(afterStatic)
-            ?: throw GradleException("$where: @ProviderFactory 之后没有找到方法名")
+            ?: throw GradleException("$where: no method name found after @ProviderFactory")
         return javaFun.groupValues[1]
     }
 
-    // ── 文本工具 ──────────────────────────────────────────────────
+    // ── Text utilities ────────────────────────────────────────────
     private fun matchPair(masked: String, open: Int, l: Char, r: Char): Int {
         var depth = 0
         var i = open
@@ -267,10 +270,10 @@ internal class SourceScanner(private val index: TypeIndex) {
             }
             i++
         }
-        throw GradleException("括号不匹配：offset=$open")
+        throw GradleException("Unmatched bracket: offset=$open")
     }
 
-    /** 只在 `[from, to)` 里查找，避免在类体之外命中其他类的注解。 */
+    /** Search only within `[from, to)` so annotations from other classes cannot be matched. */
     private fun indexOfIn(text: String, needle: String, from: Int, to: Int): Int {
         if (from >= to) return -1
         val i = text.indexOf(needle, from)
@@ -311,7 +314,7 @@ internal class SourceScanner(private val index: TypeIndex) {
         private fun qualify(pkg: String, name: String): String =
             if (pkg.isEmpty()) name else "$pkg.$name"
 
-        /** 把一个源文件里声明的类型全部登记进索引，供全模块范围的名字解析使用 */
+        /** Registers every type declared in one source file into the index, for module-wide name resolution. */
         fun collectTypes(masked: String, index: TypeIndex) {
             val pkg = packageOf(masked)
             DECL_RE.findAll(masked).forEach { m -> index.register(qualify(pkg, m.groupValues[2])) }

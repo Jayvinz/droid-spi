@@ -18,7 +18,7 @@ gradlePlugin {
         create("spi") {
             id = "top.jayvin.android.spi"
             displayName = "Android SPI service loader"
-            description = "编译期扫描 @ServiceProvider，生成固定全类名的 provider configuration"
+            description = "Scans @ServiceProvider at compile time and generates a fixed-FQN provider configuration class"
             implementationClass = "top.jayvin.android.spi.plugin.SpiPlugin"
         }
     }

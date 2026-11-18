@@ -1,21 +1,23 @@
 package top.jayvin.android.spi
 
 /**
- * 一个已就绪的 service provider。对应 `java.util.ServiceLoader.Provider<S>`。
+ * A ready service provider. Corresponds to `java.util.ServiceLoader.Provider<S>`.
  *
- * JDK 里 `type()` 返回实现类、`get()` 返回实例；这里多一个 [state]，
- * 以及 [get] 可空——因为动态模块可能在拿到 provider 后被卸载。
+ * In the JDK, `type()` returns the implementation class and `get()` returns an instance; here
+ * there is an extra [state], and [get] is nullable — a dynamic module may be uninstalled after
+ * a provider has been acquired.
  *
- * 从 [ServiceLoader.stream] / [ServiceLoader.findFirst] 拿到的 provider 一定是 [READY][ProviderState.READY]。
+ * Providers obtained from [ServiceLoader.stream] / [ServiceLoader.findFirst] are always
+ * [READY][ProviderState.READY].
  */
 interface Provider<S : Any> {
 
-    /** provider 的实现类。只解析，不触发 `<clinit>`。 */
+    /** The provider implementation class. Resolves only; does not trigger `<clinit>`. */
     fun type(): Class<out S>
 
-    /** 取实例，会触发 `<clinit>`；模块被卸载等情况下返回 null。 */
+    /** Gets an instance; triggers `<clinit>`. Returns null when the module has been uninstalled, etc. */
     fun get(): S?
 
-    /** 当前状态，通常为 [ProviderState.READY]。 */
+    /** Current state, usually [ProviderState.READY]. */
     fun state(): ProviderState
 }

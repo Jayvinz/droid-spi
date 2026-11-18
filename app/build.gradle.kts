@@ -46,6 +46,6 @@ dependencies {
 
     implementation("top.jayvin.android.spi:annotation:$version")
     implementation("top.jayvin.android.spi:runtime:$version")
-    // demo 自己负责动态模块安装与可见性
+    // The demo owns dynamic-module installation and visibility.
     implementation("com.google.android.play:feature-delivery:2.1.0")
 }

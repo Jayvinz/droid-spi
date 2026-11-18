@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Play 的安装提示需要 base 里有这个标题资源；动态模块的 manifest 通过 @string 引用它 -->
-    <string name="feature_camera_title">相机</string>
+    <!-- Play's install prompt needs this title resource in base; the dynamic module's manifest references it via @string -->
+    <string name="feature_camera_title">Camera</string>
 </resources>

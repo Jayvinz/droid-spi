@@ -4,15 +4,18 @@ import org.gradle.api.GradleException
 import java.io.File
 
 /**
- * 扫描源码目录下的标准 SPI 配置文件：`META-INF/services/<service 全限定名>`。
+ * Scans standard SPI configuration files under source directories:
+ * `META-INF/services/<service FQN>`.
  *
- * <p>典型位置是 `src/main/resources/META-INF/services/`。集成第三方 jar / aar 里的 provider 时，
- * 把这些第三方库声明的 service 配置按标准 SPI 语法放到本模块源码目录即可 —— 配置由我们维护，
- * 实现类由第三方 jar 提供。
+ * <p>The typical location is `src/main/resources/META-INF/services/`. To integrate providers
+ * from third-party jars / aars, copy the service configuration declared by those libraries into
+ * this module's source directory using standard SPI syntax — we maintain the configuration and
+ * the third-party jar supplies the implementation classes.
  *
- * <p>只读这几个文本文件，不扫 class、不解压任何依赖产物，开销可忽略。
- * 文件中的每行是一个 provider 全限定名，`#` 起注释，空行忽略。
- * 标准 SPI 配置没有 key / factory 概念，统一映射为默认 key（空串）和无参构造。
+ * <p>It reads only these text files; it does not scan classes or unzip any dependency artifact,
+ * so the overhead is negligible. Each line is one provider FQN, `#` starts a comment, and blank
+ * lines are ignored. Standard SPI has no key / factory concept, so entries map to the default
+ * key (empty string) and no-arg construction.
  */
 internal object ServiceConfigScanner {
 
@@ -24,7 +27,7 @@ internal object ServiceConfigScanner {
         files.forEach { file ->
             if (!file.isFile) return@forEach
 
-            // 兼容 Windows 分隔符；文件名就是 service 全限定名
+            // Support Windows separators; the file name is the service FQN
             val path = file.path.replace('\\', '/')
             val at = path.indexOf(META_INF_SERVICES)
             if (at < 0) return@forEach
@@ -36,7 +39,7 @@ internal object ServiceConfigScanner {
                 if (provider.isEmpty()) return@forEach
                 if (!CLASS_NAME.matches(provider)) {
                     throw GradleException(
-                        "${file.path}: 非法 provider 名 `$provider`（应形如 com.foo.BarImpl）"
+                        "${file.path}: invalid provider name `$provider` (expected a form like com.foo.BarImpl)"
                     )
                 }
                 out += ProviderEntry(service, provider, "", "")

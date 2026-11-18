@@ -5,14 +5,15 @@ import top.jayvin.android.spi.ServiceProvider
 import com.example.feature.camera.ui.CameraActivity
 
 /**
- * 动态模块里的服务实现。base 在编译期看不到这个类，
- * 但注册表里有一条 `(CameraService, "")` → 本类的 `ldc` 引用；
- * 模块未安装时该条目不可用，装好后下一次 `load()` 自然成功，无需刷新。
+ * Service implementation inside a dynamic module. Base cannot see this class at compile time,
+ * but the registry contains a `ldc` reference from `(CameraService, "")` to this class.
+ * While the module is not installed the entry is unavailable; after installation the next
+ * `load()` succeeds, with no refresh.
  */
 @ServiceProvider(service = CameraService::class)
 class CameraServiceImpl : CameraService {
 
-    override fun description(): String = "相机 · 来自 on-demand 动态模块"
+    override fun description(): String = "Camera · from the on-demand dynamic module"
 
     override fun open(context: android.content.Context) {
         context.startActivity(

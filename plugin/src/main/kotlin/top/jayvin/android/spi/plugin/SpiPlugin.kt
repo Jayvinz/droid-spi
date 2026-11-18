@@ -8,11 +8,13 @@ import org.gradle.api.Plugin
 import org.gradle.api.Project
 
 /**
- * `top.jayvin.android.spi` 插件。
+ * The `top.jayvin.android.spi` plugin.
  *
- * 每个 Android 模块 apply 一次：
- * - 所有模块（library / dynamic-feature / application）注册 `xxScanProviders` 扫描本模块源码；
- * - 只有 application 模块注册 `xxGenerateServiceConfiguration`，聚合全部清单并生成配置 class。
+ * Applied once per Android module:
+ * - Every module (library / dynamic-feature / application) registers `xxScanProviders` to scan
+ *   its own sources;
+ * - Only application modules register `xxGenerateServiceConfiguration`, which aggregates all
+ *   manifests and generates the configuration class.
  */
 class SpiPlugin : Plugin<Project> {
 
@@ -43,7 +45,7 @@ class SpiPlugin : Plugin<Project> {
 
         val task = project.tasks.register(taskName, ScanProvidersTask::class.java) { t ->
             t.group = "spi"
-            t.description = "扫描本模块源码注解与 META-INF/services，产出 provider 清单"
+            t.description = "Scans this module's annotations and META-INF/services, producing a provider manifest"
             t.sourceDirs.from(
                 project.file("src/main/java"),
                 project.file("src/main/kotlin"),
@@ -72,19 +74,20 @@ class SpiPlugin : Plugin<Project> {
             GenerateServiceConfigurationTask::class.java,
         ) { t ->
             t.group = "spi"
-            t.description = "聚合所有模块的 provider 清单，生成 service configuration class"
+            t.description = "Aggregates all modules' provider manifests and generates the service configuration class"
             t.packageName.set(GENERATED_PACKAGE)
             t.className.set(GENERATED_CLASS_NAME)
             t.outputDir.set(project.layout.buildDirectory.dir("generated/spi/$buildType/classes"))
         }
 
-        // 只写不读：不碰 ScopedArtifact.CLASSES 的输入，因此不成环
+        // Write only, never read: it does not touch the ScopedArtifact.CLASSES input, so there is no cycle.
         variant.artifacts.forScope(ScopedArtifacts.Scope.PROJECT)
             .use(task)
             .toAppend(ScopedArtifact.CLASSES) { t -> t.outputDir }
 
-        // 配置期跨工程收集会踩求值顺序，推迟到所有工程配置完成后再接输入。
-        // Provider 携带 producer 依赖，任务图里会自动生成 scan → generate 的边。
+        // Configuration-time cross-project collection runs into evaluation order; wire inputs
+        // only after every project is configured. Providers carry their producer dependency,
+        // so the task graph creates the scan → generate edge automatically.
         project.gradle.projectsEvaluated {
             val manifests = rootExtension(project).manifests[buildType].orEmpty()
             task.configure { t -> t.manifests.from(*manifests.toTypedArray()) }

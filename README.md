@@ -1,95 +1,104 @@
 # Android SPI ServiceLoader
 
-面向 AAB 多模块工程的**编译期 provider 配置表**。命名与 `java.util.ServiceLoader` 的 SPI 词汇对齐
-（service / provider / provider-configuration），不用 APT/KSP、不解压第三方 jar，
-运行时即可拿到动态功能模块里的 provider；模块装好后下一次 `load()` 自然生效（按需探测，无需刷新）。
-provider 既可以来自 `@ServiceProvider` 注解，也可以来自源码目录下的标准 `META-INF/services/` 文本文件
-（用于按 JDK SPI 约定接入第三方 jar / aar 提供的实现类）。
+A **compile-time provider configuration table** for Android AAB multi-module projects.
+The naming follows the SPI vocabulary of `java.util.ServiceLoader`
+(service / provider / provider-configuration). It uses no APT/KSP and never unzips
+third-party jars, yet providers living in dynamic feature modules are available at runtime;
+once a module is installed, the next `load()` simply works (on-demand probing, no refresh).
+Providers can be declared with the `@ServiceProvider` annotation or through standard
+`META-INF/services/` text files in source directories (for integrating implementations
+shipped by third-party jars / aars under the JDK SPI convention).
 
-runtime 通过 compileOnly 的占位类编译出直接 `new` 生成类的字节码；运行时由 app 插件生成的同名类顶替。
-provider 也由类字面量引用，全程没有 `Class.forName`。
+Runtime compiles a direct `new` against the generated class by using a compileOnly
+placeholder class; at runtime the app plugin's generated same-name class takes its place.
+Providers are referenced through class literals too, so there is no `Class.forName` anywhere.
 
-> 完整的设计背景、JVM 语义与方案对比见 [docs/android-service-discovery-design.md](docs/android-service-discovery-design.md)。
+> For the full design background, JVM semantics and comparison with other solutions, see
+> [docs/android-spi-design.md](docs/android-spi-design.md).
 
 ```
-扫描期（每个模块）                              聚合期（app）                    运行期
+Scan (per module)                              Aggregate (app)                 Runtime
 @ServiceProvider ─┐                                                        Application.onCreate
-                  ├─scan─▶ 清单 ─merge─▶ ServiceConfiguration.class ─dex─▶   └─▶ initialize()
+                  ├─scan─▶ manifest ─merge─▶ ServiceConfiguration.class ─dex─▶   └─▶ initialize()
 META-INF/services ─┘                                                            (new ServiceConfiguration)
-                                                                          模块装好后 load() 自然成功
+                                                                           after install, load() just works
 ```
 
-## 与 JDK SPI 的术语对照
+## Terminology mapping with JDK SPI
 
-| JDK `java.util.ServiceLoader` | 本工程 | 说明 |
+| JDK `java.util.ServiceLoader` | This project | Notes |
 |---|---|---|
-| service | `HomeService` 接口 | 下沉在 base 的契约 |
-| service provider | `HomeServiceImpl` | 各 feature 模块里的实现 |
-| provider-configuration file | `ServiceConfiguration`（主）／源码目录 `META-INF/services/`（兼容） | 编译期生成的 class 为主；标准 SPI 文本作为补充输入 |
-| `ServiceLoader.load(service)` | `ServiceLoader.load(service, key)` | 多了一个业务变体 key |
-| `ServiceLoader.Provider.type()/get()` | `ServiceLoader.Provider.type()/get()/state()` | 多了 provider 状态 |
-| `ServiceLoader.stream()` | `ServiceLoader.stream()` | 语义一致，Kotlin 侧返回 `Sequence` |
+| service | `HomeService` interface | Contract living in base |
+| service provider | `HomeServiceImpl` | Implementation in each feature module |
+| provider-configuration file | `ServiceConfiguration` (primary) / `META-INF/services/` in source dirs (compatible) | Generated class is primary; standard SPI text is a supplementary input |
+| `ServiceLoader.load(service)` | `ServiceLoader.load(service, key)` | Adds a business variant key |
+| `ServiceLoader.Provider.type()/get()` | `ServiceLoader.Provider.type()/get()/state()` | Adds provider state |
+| `ServiceLoader.stream()` | `ServiceLoader.stream()` | Same semantics; returns `Sequence` on Kotlin |
 
-主要差异：`load()` 直接返回实例而不是返回 loader 对象；服务不可用时返回 `null` 而不是抛异常；
-多了 `key` 与 `ProviderState` 来处理动态分发的中间态。
+Main differences: `load()` returns an instance directly instead of a loader object;
+unavailable services return `null` instead of throwing; an extra `key` and `ProviderState`
+model the intermediate states of dynamic delivery.
 
-## 目录
+## Layout
 
 ```
-android-spi/                       单一 Gradle build，所有模块在 settings.gradle.kts 统一 include
-├── annotation/                    插件本体：@ServiceProvider / @ProviderFactory（纯 Java 注解，零依赖）
-├── runtime/                       插件本体：ServiceLoader 门面 + provider 按需探测（Android Library）
-├── plugin/                        插件本体：扫描与生成（Gradle Plugin，ASM 生成 class）
-├── configuration-stub/            runtime 的 compileOnly 占位类（不会打进 APK/AAR）
-├── app/                           demo 主模块（接入方）：Application 调 initialize()
-├── modules/                       demo 非主模块统一放在这里
-│   ├── core-api/                  service 接口层（所有 @ServiceProvider 的 service 都在这里）
-│   ├── core-common/               普通常驻 library（含 META-INF/services 示例）
-│   ├── feature-home/              HomeService 默认 provider + vip 变体
-│   ├── feature-account/           @ProviderFactory 私有构造 + guest 变体
-│   └── feature_camera/            on-demand 动态模块：CameraService provider + 独立 Activity
-├── docs/                          完整设计方案
-└── local-repo/                    publish 产物（本地 maven 仓库，被 gitignore）
+android-spi/                       Single Gradle build; all modules included in settings.gradle.kts
+├── annotation/                     Framework: @ServiceProvider / @ProviderFactory (plain Java annotations, zero dependencies)
+├── runtime/                        Framework: ServiceLoader facade + on-demand provider probing (Android Library)
+├── plugin/                         Framework: scanning and generation (Gradle Plugin, ASM bytecode)
+├── configuration-stub/            compileOnly placeholder for runtime (never packaged into APK/AAR)
+├── app/                           Demo main module (consumer): Application calls initialize()
+├── modules/                       Demo non-main modules live here
+│   ├── core-api/                  Service interface layer (every @ServiceProvider service lives here)
+│   ├── core-common/               Resident library (contains the META-INF/services example)
+│   ├── feature-home/              Default HomeService provider + vip variant
+│   ├── feature-account/           @ProviderFactory private constructor + guest variant
+│   └── feature_camera/            on-demand dynamic module: CameraService provider + standalone Activity
+├── docs/                          Full design document
+└── local-repo/                    Publish output (local Maven repository, gitignored)
 ```
 
-Gradle 模块路径与目录一一对应：`:app`、`:modules:core-api`、`:modules:feature_camera`、`:plugin` 等。
+Gradle module paths map one-to-one to directories: `:app`, `:modules:core-api`,
+`:modules:feature_camera`, `:plugin`, etc.
 
-## 快速开始
+## Quick start
 
 ```bash
-# 1. 发布三个插件模块到本地 maven（local-repo/）；demo 模块从同一仓库消费插件
+# 1. Publish the three framework modules to the local Maven repo (local-repo/);
+#    demo modules consume the plugin from the same repository
 ./gradlew :annotation:publish :runtime:publish :plugin:publish
 
-# 2. 构建 demo（同一 build 内）
+# 2. Build the demo (in the same build)
 ./gradlew :app:assembleDebug      # APK
-./gradlew :app:bundleDebug        # AAB（含 feature_camera 分包）
+./gradlew :app:bundleDebug        # AAB (with the feature_camera split)
 ```
 
-跑测试：
+Run tests:
 
 ```bash
 ./gradlew :runtime:testDebugUnitTest
 ```
 
-验证生成物：
+Inspect the artifacts:
 
 ```bash
-# 配置类字节码：只有方法体引用实现类，没有 <clinit>
+# Configuration bytecode: implementation classes are only referenced inside method bodies, no <clinit>
 javap -p -c app/build/intermediates/classes/debug/DebugGenerateServiceConfiguration/top/jayvin/android/spi/generated/ServiceConfiguration.class
 
-# 确认 provider 进了 APK、配置类进了 base dex
+# Confirm providers are in the APK and the configuration class is in the base dex
 "D:/Android/Sdk/build-tools/35.0.0/aapt2.exe" dump xmltree app/build/outputs/apk/debug/app-debug.apk --file AndroidManifest.xml
 ```
 
-> 配置类不再出现在 manifest 里；manifest 只需要声明调用了 `ServiceLoader.initialize()` 的 Application。
+> The configuration class no longer appears in the manifest; the manifest only needs the
+> Application that calls `ServiceLoader.initialize()`.
 
-## 接入三步
+## Integration in three steps
 
-**1. 依赖与插件**
+**1. Dependencies and plugin**
 
 ```kotlin
 plugins {
-    id("com.android.application")     // library / dynamic-feature 同理
+    id("com.android.application")     // same for library / dynamic-feature
     id("org.jetbrains.kotlin.android")
     id("top.jayvin.android.spi")
 }
@@ -100,13 +109,13 @@ dependencies {
 }
 ```
 
-**2. 在 Application.onCreate 初始化（唯一的手写胶水）**
+**2. Initialize in Application.onCreate (the only handwritten glue)**
 
 ```kotlin
 class MyApp : Application() {
     override fun onCreate() {
         super.onCreate()
-        ServiceLoader.initialize()   // 直接实例化生成的配置类
+        ServiceLoader.initialize()   // directly instantiate the generated configuration class
     }
 }
 ```
@@ -115,14 +124,17 @@ class MyApp : Application() {
 <application android:name=".MyApp">
 ```
 
-`initialize()` 直接 `new` 固定全类名 `top.jayvin.android.spi.generated.ServiceConfiguration`。
-如果该类不存在（app 未 apply 插件），会捕获异常并打日志，之后门面 API 返回 null / 空集合，不会崩溃。
-在 `Application.onCreate` 里调用即可保证 Activity 启动时配置表已经就绪。
+`initialize()` directly runs `new` on the fixed class name
+`top.jayvin.android.spi.generated.ServiceConfiguration`. If the class does not exist
+(the app did not apply the plugin), the exception is caught and logged, after which the
+facade APIs return null / empty collections; it never crashes. Calling it from
+`Application.onCreate` guarantees the table is ready before any Activity starts.
 
-**3. 声明与调用**
+**3. Declare and call**
 
-注解是**纯 Java 注解**，所以纯 Java 项目和 Kotlin 项目都能用；但 Kotlin 侧对 Java 注解
-**只接受命名参数**，必须写 `service =`：
+The annotations are **plain Java annotations**, so both pure Java and Kotlin projects can
+use them. Kotlin only accepts **named arguments** for Java annotations, so `service =`
+is mandatory:
 
 ```kotlin
 @ServiceProvider(service = HomeService::class)
@@ -130,7 +142,7 @@ class HomeServiceImpl : HomeService
 
 @ServiceProvider(service = HomeService::class, key = "vip")
 class VipHomeServiceImpl : HomeService {
-    // 构造器有参 / 私有时，用静态工厂
+    // For constructors with parameters or private constructors, use a static factory
     companion object {
         @ProviderFactory @JvmStatic
         fun create(): VipHomeServiceImpl = VipHomeServiceImpl()
@@ -138,7 +150,7 @@ class VipHomeServiceImpl : HomeService {
 }
 ```
 
-纯 Java 项目里位置参数和命名参数都行：
+In pure Java projects, both positional and named arguments work:
 
 ```java
 @ServiceProvider(HomeService.class)
@@ -148,23 +160,24 @@ public class HomeServiceImpl implements HomeService { }
 public class VipHomeServiceImpl implements HomeService { }
 ```
 
-省略 `key`（即注解默认的空串）表示默认变体，运行时 `ServiceLoader.DEFAULT_KEY` 也是空串。
+Omitting `key` (the annotation default, an empty string) means the default variant;
+`ServiceLoader.DEFAULT_KEY` is also the empty string at runtime.
 
 ```kotlin
-val home = ServiceLoader.load<HomeService>()                    // Kotlin 专属 reified 写法
-val vip  = ServiceLoader.load(HomeService::class.java, "vip")   // key 变体
-val cls  = ServiceLoader.loadClass(HomeService::class.java)     // 只要 Class
-val all  = ServiceLoader.loadAll(AccountService::class.java)    // key -> 实例
+val home = ServiceLoader.load<HomeService>()                    // Kotlin-only reified form
+val vip  = ServiceLoader.load(HomeService::class.java, "vip")   // key variant
+val cls  = ServiceLoader.loadClass(HomeService::class.java)     // class only
+val all  = ServiceLoader.loadAll(AccountService::class.java)    // key -> instance
 
-// JDK 风格的 Provider 句柄
+// JDK-style Provider handles
 val first = ServiceLoader.findFirst(HomeService::class.java)
 ServiceLoader.stream(HomeService::class.java).forEach { provider ->
     Log.d("spi", "${provider.type().name} / ${provider.state()}")
 }
 ```
 
-Java 侧所有公开方法都有 `@JvmStatic`，但不支持 reified，用 Class 字面量；
-`Sequence` 在 Java 里不好用，改用 `providers()` 拿 List：
+Every public method is `@JvmStatic` for Java callers, but Java has no reified generics,
+so pass Class literals; `Sequence` is awkward in Java, so use `providers()` instead:
 
 ```java
 HomeService home = ServiceLoader.load(HomeService.class);
@@ -174,69 +187,92 @@ for (Provider<HomeService> p : ServiceLoader.providers(HomeService.class)) {
 }
 ```
 
-所有 `load*` 都返回 `null` 而不抛异常：服务不可用（动态模块没装）是常态。
+All `load*` methods return `null` instead of throwing: an unavailable service
+(a dynamic module that is not installed) is a normal state, not an error.
 
-## 兼容标准 SPI 配置（META-INF/services）
+## Compatible with standard SPI configuration (META-INF/services)
 
-第三方 jar / aar 里的实现类往往不会标我们的 `@ServiceProvider`，但通常按 JDK SPI 约定声明了
-`META-INF/services/<service 全限定名>`。为了避免改第三方源码，本框架**读源码目录下的同名文本文件**
-作为等价输入：
+Implementations inside third-party jars / aars usually do not carry our
+`@ServiceProvider` annotation, but they often declare
+`META-INF/services/<service FQN>` following the JDK SPI convention. To avoid modifying
+third-party source code, the framework **reads a same-named text file under source
+directories** as an equivalent input:
 
 ```
 your-module/src/main/resources/META-INF/services/com.example.core.api.LegacyService
 ```
 
-文件内容与 `java.util.ServiceLoader` 完全一致 —— 一行一个实现类全限定名，`#` 起注释，空行忽略：
+The file content is exactly what `java.util.ServiceLoader` expects: one implementation
+fully-qualified name per line, `#` starts a comment, blank lines are ignored:
 
 ```text
-# 模拟第三方库按 JDK SPI 约定声明 provider
+# Simulates a third-party library declaring a provider through JDK SPI
 com.example.core.common.LegacyServiceImpl
-com.thirdparty.SomeOtherImpl   # 多个也支持
+com.thirdparty.SomeOtherImpl   # multiple entries are supported too
 ```
 
-要点：
+Key points:
 
-- **配置在本工程源码里维护，实现类由第三方 jar / aar 提供**。框架只扫描源码目录的文本文件，
-  **不解压、不扫依赖产物里的 class**（延续"零第三方 jar 扫描"的约束）；
-- 扫描路径：`src/main/resources/META-INF/services/**`，也接受 `src/main/java` / `src/main/kotlin`
-  下任意深度的 `META-INF/services/` 目录；由 `spi { scanMetaInfServices = true }` 控制（默认开启）；
-- 标准 SPI 配置没有 `key` / `factory` 概念，统一映射为 `key = ""`（默认变体）、走无参构造 ——
-  因此**实现类必须有公开无参构造**；需要 key 变体或私有构造 + 工厂时，仍用 `@ServiceProvider` / `@ProviderFactory`；
-- 每条配置进入清单后与注解声明走完全相同的聚合与字节码生成流程，运行时无差别；
-- 两种声明指向**同一 provider 实现类**时按整行去重，不算冲突；不同实现类抢同一 `(service, key="")` 仍会构建报错。
+- **Configuration is maintained in this project's source; the implementation classes are
+  provided by the third-party jar / aar**. The framework only scans text files in source
+  directories and **does not unzip or scan classes in dependency artifacts** (preserving the
+  "no third-party jar scanning" constraint);
+- Scan path: `src/main/resources/META-INF/services/**`, and also any `META-INF/services/`
+  directory at any depth under `src/main/java` / `src/main/kotlin`; controlled by
+  `spi { scanMetaInfServices = true }` (enabled by default);
+- Standard SPI configuration has no `key` / `factory` concept, so entries map to
+  `key = ""` (default variant) and no-arg construction; therefore **implementations must
+  have a public no-arg constructor**. For key variants or private constructors + factories,
+  keep using `@ServiceProvider` / `@ProviderFactory`;
+- Every entry goes through exactly the same aggregation and bytecode generation as
+  annotation declarations; runtime behavior is identical;
+- When both declarations point at the **same implementation class**, the identical line is
+  deduplicated rather than treated as a conflict; different implementations competing for the
+  same `(service, key="")` still fail the build.
 
-> 该模块必须 apply `top.jayvin.android.spi` 插件，否则没有 `xxScanProviders` 任务，配置不会被扫描。
-> `modules/core-common` 就是只有 SPI 配置、没有注解的最小示例。
+> That module must apply the `top.jayvin.android.spi` plugin, otherwise there is no
+> `xxScanProviders` task and the configuration is not scanned.
+> `modules/core-common` is the minimal example that only has SPI configuration and no annotations.
 
-## 动态模块安装后发生了什么
+## What happens after a dynamic module is installed
 
-框架不做预扫描，也不缓存 `MISSING`。`providerOf` / `newProvider` 里的 provider 类常量是在执行到
-对应分支时才解析的，所以模块装好后：
+The framework performs no pre-scan and caches no `MISSING` state. Provider class constants
+inside `providerOf` / `newProvider` are resolved only when the corresponding branch executes,
+so after a module is installed:
 
-1. 进程内任意位置调用 Play 的 `startInstall()`；
-2. 安装完成后，动态模块的类对当前进程可见（由宿主的安装通道负责，框架不介入）；
-3. 下一次 `ServiceLoader.load()` 按需探测到该类，直接拿到实例。
+1. Call Play's `startInstall()` anywhere in the process;
+2. Once installation completes, the dynamic module's classes become visible to the process
+   (guaranteed by the host's install channel; the framework does not intervene);
+3. The next `ServiceLoader.load()` probes on demand and gets an instance directly.
 
-没有 `refresh()`、没有 `MISSING` 表，因此不存在"装好了但表没更新"的窗口。唯一记住的状态是 `DEAD`：
-某个 provider 的 `<clinit>` 抛错后 JVM 已把它标记为 erroneous，本进程内不再重试。
+There is no `refresh()` and no `MISSING` table, so there is no window where "it is installed
+but the table is stale". The only remembered state is `DEAD`: once a provider's `<clinit>`
+throws, the JVM has marked it erroneous and it is not retried in this process.
 
-冷启动（模块早装好）、进程被杀后重启（同上）都不需要额外处理；未安装期间每次 `load()` 会重新尝试，
-失败返回 `null`。
+Cold start (module installed earlier) and process restart (same) need no extra handling.
+While a module is not installed, every `load()` retries and returns `null`.
 
-## 类引用与缺失处理
+## Class references and missing-class handling
 
-- **配置类**：runtime 通过 `compileOnly` 依赖 `configuration-stub` 模块里的同名空类，编译出直接
-  `new ServiceConfiguration()` 的字节码。运行时由 app 插件生成的同名类顶替；占位类不会打进 APK / AAR。
-- **provider 用类字面量引用**：生成字节码里的 `ldc com/example/...Impl` / `new` / `INVOKESTATIC`，
-  R8 能看到引用自动保留，运行时不反射、不 `Method.invoke`。
-- **关键约束**：这些字面量**只能出现在方法体里**，绝不能进 `<clinit>`。
-  否则动态模块未安装时配置类自己被标记 erroneous（`Could not initialize class`），
-  整个表报废且不可恢复。所以生成器刻意不生成 `<clinit>`。
-- **配置类缺失时**（app 未 apply 插件）：`initialize()` 捕获 `NoClassDefFoundError`，`Log.e` 后使用空配置，
-  `load()` 返回 null、`stream()` / `snapshot()` 为空，不崩溃。
-- R8 能看到 `new` 引用，存在时自动保留该类；`runtime/consumer-rules.pro` 对缺失情况加了 `-dontwarn`。
+- **Configuration class**: runtime depends on the `configuration-stub` module through
+  `compileOnly`, which lets it compile a direct `new ServiceConfiguration()` call. At runtime
+  the same-name class generated by the app plugin takes its place; the placeholder is never
+  packaged into the APK / AAR.
+- **Providers are referenced through class literals**: generated bytecode uses `ldc` /
+  `new` / `INVOKESTATIC` on `com/example/...Impl`, so R8 sees the references and keeps the
+  classes automatically; there is no reflection and no `Method.invoke` at runtime.
+- **Critical constraint**: those literals **may only appear inside method bodies, never in
+  `<clinit>`**. Otherwise, while a dynamic module is not installed, the configuration class
+  itself is marked erroneous (`Could not initialize class`) and the whole table is broken
+  beyond recovery. The generator deliberately emits no `<clinit>`.
+- **When the configuration class is missing** (the app did not apply the plugin):
+  `initialize()` catches `NoClassDefFoundError`, logs it, and switches to an empty
+  configuration, so `load()` returns null and `stream()` / `snapshot()` return empty
+  without crashing.
+- R8 sees the `new` reference and keeps the class when it exists; `runtime/consumer-rules.pro`
+  adds `-dontwarn` for the missing case.
 
-## 生成的东西长什么样
+## What the generated class looks like
 
 ```java
 public final class ServiceConfiguration implements ProviderConfiguration {
@@ -263,34 +299,46 @@ public final class ServiceConfiguration implements ProviderConfiguration {
 }
 ```
 
-`services()` 里只有接口 —— 接口必须下沉到 base，否则方法体一旦解析不到就整表失效（唯一的硬约束）。
+`services()` contains interfaces only. Interfaces must live in base; otherwise a failed
+resolution inside a method body breaks the whole table (the only hard constraint).
 
-## 构建期校验
+## Build-time validation
 
-扫描器宁可构建失败，也不生成错误的表：
+The scanner prefers a failed build over generating a wrong table:
 
-| 违反 | 结果 |
+| Violation | Result |
 |---|---|
-| 同一 `(service, key)` 两个 provider | `GenerateServiceConfigurationTask` 报错，列出两个实现类 |
-| `@ProviderFactory` 非静态 / 缺 `@JvmStatic` | `ScanProvidersTask` 报错，给出正确写法 |
-| 一个类里多个 `@ProviderFactory` | 报错 |
-| `service` 写成非法表达式（非 `X::class` / `X.class`） | 报错 |
-| 存在 `import a.b.*` 且无法确定全限定名 | 报错，要求显式 import 或写全名 |
-| `META-INF/services/` 文件里的 provider 名非法（非 `com.foo.Bar` 形式） | `ScanProvidersTask` 报错，给出文件名与行内容 |
-| 注解与 SPI 配置里不同实现类抢同一 `(service, key)` | `GenerateServiceConfigurationTask` 报错，列出两个实现类 |
+| Two providers for the same `(service, key)` | `GenerateServiceConfigurationTask` fails and lists both implementations |
+| `@ProviderFactory` non-static / missing `@JvmStatic` | `ScanProvidersTask` fails with the correct form |
+| More than one `@ProviderFactory` in a class | Fails |
+| `service` is not a valid expression (not `X::class` / `X.class`) | Fails |
+| `import a.b.*` present and the FQN cannot be determined | Fails; asks for an explicit import or a fully-qualified name |
+| Invalid provider name in a `META-INF/services/` file (not `com.foo.Bar` form) | `ScanProvidersTask` fails with the file name and line content |
+| An annotation and an SPI entry use different implementations for the same `(service, key)` | `GenerateServiceConfigurationTask` fails and lists both implementations |
 
-## 已知限制
+## Known limitations
 
-- **接口必须在 base**：`services()` 里的类字面量若来自动态模块，配置表会整表失效。
-- **扫描的是 `src/main/java` + `src/main/kotlin` + `src/main/resources`（SPI 配置）**：flavor 独有目录（`src/debug/`）与自定义 sourceSet 未覆盖；`META-INF/services` 也只认源码目录，不读依赖产物。
-- **按 buildType 聚合**：`debug`/`release` 各一份，flavor 共享；多 flavor 需要改成按 variant 对齐。
-- **不支持嵌套类 / `typealias` 作为 service**：扫描器按顶层类型解析。
-- **非 Play 渠道**：框架不依赖 Play；动态分发的安装与类可见性由宿主自己的通道负责，已打进包里的 provider 正常可用。
-- **R8**：base 会把未安装模块的类报 missing class，按模块名补 `-dontwarn`（`app/proguard-rules.pro` 有示例）。
+- **Interfaces must live in base**: if a class literal inside `services()` comes from a
+  dynamic module, the whole table breaks.
+- **Scans `src/main/java` + `src/main/kotlin` + `src/main/resources` (SPI config)**:
+  flavor-only directories (`src/debug/`) and custom source sets are not covered;
+  `META-INF/services` is only read from source directories, not from dependency artifacts.
+- **Aggregation is per buildType**: one table for `debug`/`release`, shared by flavors;
+  multi-flavor projects need per-variant alignment.
+- **Nested classes / `typealias` are not supported as services**: the scanner resolves
+  top-level types.
+- **Non-Play channels**: the framework does not depend on Play; the install channel and
+  class visibility of dynamic delivery are the host's responsibility. Providers packaged
+  into the APK still work normally.
+- **R8**: base reports missing classes for uninstalled modules; add `-dontwarn` per module
+  (see the example in `app/proguard-rules.pro`).
 
-## 环境
+## Environment
 
-- JDK 17、Gradle 8.9、AGP 8.7.3、Kotlin 2.0.21、compileSdk 35
-- Gradle Daemon JVM 由 `gradle/gradle-daemon-jvm.properties` 固定为 17；改版本用 `./gradlew updateDaemonJvm --jvm-version=<版本>`
-- 国内环境如需代理加速依赖下载，取消 `gradle.properties` 里 clash 代理段的注释并按需改端口；默认已注释，不影响其他环境构建
-- Gradle Wrapper 使用官方分发地址，首次构建需联网下载 Gradle 8.9
+- JDK 17, Gradle 8.9, AGP 8.7.3, Kotlin 2.0.21, compileSdk 35
+- Gradle Daemon JVM is pinned to 17 by `gradle/gradle-daemon-jvm.properties`;
+  change it with `./gradlew updateDaemonJvm --jvm-version=<version>`
+- In regions where dependency downloads benefit from a proxy, uncomment the clash proxy
+  section in `gradle.properties` and adjust the port; it is commented out by default and
+  does not affect other environments
+- The Gradle Wrapper uses the official distribution URL; the first build downloads Gradle 8.9

@@ -7,13 +7,15 @@ import org.objectweb.asm.Opcodes
 import org.objectweb.asm.Type
 
 /**
- * 生成 provider configuration 字节码。三个必须守住的点：
+ * Generates the provider configuration bytecode. Three points must hold:
  *
- * 1. **不生成 `<clinit>`**。配置类由 `ServiceLoader.initialize` 直接 `new`；provider 类字面量
- *    只出现在方法体里，动态模块未装时只有对应方法抛 `NoClassDefFoundError`，配置类自身不会被
- *    JVM 标记为 erroneous，装好后可无限次重探。
- * 2. `services()` 只在方法体里引用**接口**，接口必须在 base，永远可解析。
- * 3. 走 `@ProviderFactory` 时生成 `INVOKESTATIC`，无 `Method.invoke`。
+ * 1. **No `<clinit>`**. `ServiceLoader.initialize` directly `new`s the configuration class;
+ *    provider class literals appear only inside method bodies. While a dynamic module is not
+ *    installed, only the corresponding method throws `NoClassDefFoundError`; the configuration
+ *    class itself is never marked erroneous by the JVM and can be re-probed indefinitely.
+ * 2. `services()` references only **interfaces**, inside the method body; interfaces must live
+ *    in base and are always resolvable.
+ * 3. `@ProviderFactory` generates `INVOKESTATIC`, never `Method.invoke`.
  */
 internal object ConfigurationClassGenerator {
 
@@ -26,7 +28,7 @@ internal object ConfigurationClassGenerator {
         val grouped = entries.groupBy { it.service }
 
         val cw = object : ClassWriter(COMPUTE_FRAMES or COMPUTE_MAXS) {
-            // 实现类可能来自尚未安装的动态模块，不能真的去加载它们
+            // Implementations may come from uninstalled dynamic modules; they must not be loaded here.
             override fun getCommonSuperClass(type1: String, type2: String): String = "java/lang/Object"
         }
 
@@ -68,7 +70,7 @@ internal object ConfigurationClassGenerator {
     private fun emitKeys(cw: ClassWriter, keys: List<String>) =
         emitConstantArray(cw, "keys", "java/lang/String", keys)
 
-    /** `{ANEWARRAY; DUP; index; ldc; AASTORE}` 的固定套路，services() 与 keys() 共用。 */
+    /** The fixed `{ANEWARRAY; DUP; index; ldc; AASTORE}` pattern shared by services() and keys(). */
     private fun emitConstantArray(
         cw: ClassWriter,
         methodName: String,
@@ -140,8 +142,8 @@ internal object ConfigurationClassGenerator {
     }
 
     /**
-     * 生成 `arg0 == service && arg1 == key` 的两层分发。命中时调用 [onHit]，
-     * 未命中任何分支则落到 [end] 标签（那里统一返回 null）。
+     * Generates a two-level dispatch on `arg0 == service && arg1 == key`. [onHit] runs on a match;
+     * when no branch matches, control falls through to the [end] label (which returns null).
      */
     private fun emitServiceKeyChain(
         mv: MethodVisitor,

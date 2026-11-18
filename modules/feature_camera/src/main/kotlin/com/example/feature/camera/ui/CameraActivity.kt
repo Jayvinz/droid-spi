@@ -9,7 +9,8 @@ import android.widget.TextView
 import com.example.core.common.Trace
 
 /**
- * 动态模块里的 Activity。页面完全由代码构建，不依赖 split 内的 layout/string 资源。
+ * Activity inside a dynamic module. The page is built entirely in code and does not depend on
+ * layout/string resources inside the split.
  */
 class CameraActivity : Activity() {
 
@@ -24,14 +25,14 @@ class CameraActivity : Activity() {
         }
 
         panel.addView(TextView(this).apply {
-            text = "相机模块已加载"
+            text = "Camera module loaded"
             textSize = 22f
             setTextColor(Color.BLACK)
             gravity = Gravity.CENTER
         })
 
         panel.addView(TextView(this).apply {
-            text = Trace.line("camera", "这个页面来自 on-demand 动态模块")
+            text = Trace.line("camera", "This page comes from the on-demand dynamic module")
             textSize = 14f
             setTextColor(Color.DKGRAY)
             gravity = Gravity.CENTER

@@ -1,7 +1,7 @@
 package com.example.core.api
 
 /**
- * 首页内容。由 `:feature-home` 提供实现。
+ * Home page content. Implemented by `:modules:feature-home`.
  */
 interface HomeService {
     fun title(): String

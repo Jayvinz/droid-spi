@@ -3,10 +3,13 @@ package com.example.core.api
 import android.content.Context
 
 /**
- * 相机能力。实现位于 **on-demand 动态模块** `:modules:feature_camera`，
- * 未安装时 `ServiceLoader.load(CameraService::class.java)` 返回 null；装好后下一次调用即可拿到实例。
+ * Camera capability. The implementation lives in the **on-demand dynamic module**
+ * `:modules:feature_camera`. While it is not installed,
+ * `ServiceLoader.load(CameraService::class.java)` returns null; after installation the next
+ * call gets an instance.
  *
- * 页面跳转也由实现自己完成，base 侧不需要知道 `CameraActivity` 的类名。
+ * The implementation also performs the page navigation itself, so base never needs to know
+ * the `CameraActivity` class name.
  */
 interface CameraService {
     fun description(): String

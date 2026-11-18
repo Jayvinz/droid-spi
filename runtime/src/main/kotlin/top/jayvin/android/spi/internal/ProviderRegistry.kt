@@ -7,13 +7,15 @@ import top.jayvin.android.spi.ServiceLoader
 import java.util.concurrent.ConcurrentHashMap
 
 /**
- * provider 查询器（内部实现，业务代码不直接接触）。
+ * Provider resolver (internal implementation; business code never touches it directly).
  *
- * 不做"预扫描 + 缓存 MISSING"的状态表。`providerOf` / `newProvider` 里的 provider 类常量
- * 本来就只在执行到对应分支时才解析，因此每次调用按需探测即可：动态模块装好后，
- * 下一次 `load()` 自然就能成功，不需要安装事件来刷新。
+ * There is no "pre-scan + cache MISSING" state table. Provider class constants inside
+ * `providerOf` / `newProvider` are resolved only when the corresponding branch executes anyway,
+ * so probing on demand on every call is enough: after a dynamic module is installed, the next
+ * `load()` simply succeeds, with no install event needed to refresh anything.
  *
- * 只记住 `DEAD`（`<clinit>` 失败，JVM 已标记 erroneous，本进程内不可逆），避免反复触发同一个错误。
+ * Only `DEAD` is remembered (`<clinit>` failed; the JVM has marked the class erroneous,
+ * irreversible in this process) to avoid repeatedly triggering the same error.
  */
 internal class ProviderRegistry internal constructor(
     private val configuration: ProviderConfiguration,
@@ -27,7 +29,7 @@ internal class ProviderRegistry internal constructor(
         val services = configuration.services()
         val keys = configuration.keys()
         require(services.size == keys.size) {
-            "provider configuration 损坏：services=${services.size} keys=${keys.size}"
+            "Broken provider configuration: services=${services.size} keys=${keys.size}"
         }
         services.indices.groupBy { services[it] }
             .mapValues { (_, indexes) -> indexes.map { keys[it] }.sorted() }
@@ -35,18 +37,18 @@ internal class ProviderRegistry internal constructor(
 
     private val dead = ConcurrentHashMap.newKeySet<Slot>()
 
-    /** 取实例；未就绪返回 null，永不抛异常。 */
+    /** Gets an instance; returns null when not ready, never throws. */
     fun <T : Any> load(service: Class<T>, key: String = ServiceLoader.DEFAULT_KEY): T? {
         instantiate(service, key)?.let { return it }
 
-        // 降级：未指定 key，且该接口只有一个可用 provider 时直接用它
+        // Fallback: no key specified and exactly one provider is available -> use it directly
         if (key == ServiceLoader.DEFAULT_KEY) {
             singleAvailableKey(service)?.let { return instantiate(service, it) }
         }
         return null
     }
 
-    /** 恰好一个可用变体时返回它的 key；0 个或多个都不需要降级，看到第二个就提前返回。 */
+    /** Returns the key when exactly one variant is available; 0 or multiple need no fallback, so it returns early on the second. */
     private fun singleAvailableKey(service: Class<*>): String? {
         var found: String? = null
         for (key in keysOf(service)) {
@@ -57,7 +59,7 @@ internal class ProviderRegistry internal constructor(
         return found
     }
 
-    /** 只取 Class，不实例化，不触发 provider 的 `<clinit>`。 */
+    /** Class only, without instantiating or triggering the provider's `<clinit>`. */
     fun <T : Any> loadClass(
         service: Class<T>,
         key: String = ServiceLoader.DEFAULT_KEY,
@@ -71,28 +73,28 @@ internal class ProviderRegistry internal constructor(
         }
     }
 
-    /** 该接口下所有可用变体。 */
+    /** All available variants of the interface. */
     fun <T : Any> loadAll(service: Class<T>): Map<String, T> {
         val out = LinkedHashMap<String, T>()
         keysOf(service).forEach { k -> instantiate(service, k)?.let { out[k] = it } }
         return out
     }
 
-    /** 该接口下所有可用 provider 类。 */
+    /** All available provider classes of the interface. */
     fun <T : Any> loadAllClasses(service: Class<T>): List<Class<out T>> =
         keysOf(service).mapNotNull { loadClass(service, it) }
 
-    /** 对齐 `ServiceLoader.stream()`：只返回可用 provider 的句柄。 */
+    /** Aligned with `ServiceLoader.stream()`: handles for available providers only. */
     fun <T : Any> providers(service: Class<T>): List<Provider<T>> =
         keysOf(service).mapNotNull { key ->
             loadClass(service, key)?.let { handle(service, key, it) }
         }
 
-    /** 对齐 `ServiceLoader.iterator()` 的单点取用。 */
+    /** Single-entry lookup aligned with `ServiceLoader.iterator()`. */
     fun <T : Any> providerOf(service: Class<T>, key: String): Provider<T>? =
         loadClass(service, key)?.let { handle(service, key, it) }
 
-    /** 句柄在取得时已解析出 provider 类，[Provider.type] 不再重复探测。 */
+    /** The handle has already resolved the provider class, so [Provider.type] does not probe again. */
     private fun <T : Any> handle(
         service: Class<T>,
         key: String,
@@ -121,7 +123,7 @@ internal class ProviderRegistry internal constructor(
         }
     }
 
-    /** 调试用：当前配置表的完整快照（每次调用都会重新探测）。 */
+    /** Debugging aid: a full snapshot of the current configuration table (re-probed on every call). */
     fun snapshot(): List<Triple<String, String, ProviderState>> =
         keysByService.entries
             .flatMap { (service, keys) ->
@@ -142,16 +144,16 @@ internal class ProviderRegistry internal constructor(
             dead += slot
             null
         } catch (e: NoClassDefFoundError) {
-            // <clinit> 失败已不可逆；模块未安装则下次调用再试
+            // A <clinit> failure is irreversible; an uninstalled module retries on the next call
             if (e.message?.contains("Could not initialize class") == true) dead += slot
             null
         } catch (_: Throwable) {
-            // @ProviderFactory 方法体内的业务异常：暂时性，保持可重试
+            // Business exceptions from the @ProviderFactory body are transient; keep them retryable
             null
         }
     }
 
-    /** 构造时已按 key 排序，调用方无需重复排序。 */
+    /** Sorted by key at construction; callers do not need to sort again. */
     private fun keysOf(service: Class<*>): List<String> =
         keysByService[service].orEmpty()
 }

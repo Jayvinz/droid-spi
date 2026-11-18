@@ -1,4 +1,6 @@
-# demo 的 release 未开启 minify（见 app/build.gradle.kts），本文件仅作接入方可直接复用的示例。
-# 动态模块的实现类由生成的注册表以 `ldc` 常量引用，R8 能看到引用会自动保留。
-# 但 base 的 R8 会把这些"尚未安装的模块类"报成 missing class，按需要放行：
+# The demo's release build does not enable minification (see app/build.gradle.kts);
+# this file is an illustrative sample consumers can reuse directly.
+# Dynamic module implementations are referenced by `ldc` constants in the generated registry,
+# so R8 sees the references and keeps the classes automatically.
+# However, R8 in base reports these "not yet installed" module classes as missing; allow them as needed:
 -dontwarn com.example.feature.camera.**

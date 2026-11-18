@@ -4,16 +4,17 @@ import com.example.core.api.HomeService
 import top.jayvin.android.spi.ServiceProvider
 
 /**
- * 同一个接口的 key 变体，调用方用 `ServiceLoader.load(HomeService::class.java, "vip")` 取到。
+ * A key variant of the same interface; callers fetch it with
+ * `ServiceLoader.load(HomeService::class.java, "vip")`.
  */
 @ServiceProvider(service = HomeService::class, key = "vip")
 class VipHomeServiceImpl : HomeService {
 
-    override fun title(): String = "首页 · VIP 变体"
+    override fun title(): String = "Home · VIP variant"
 
     override fun recommendations(): List<String> = listOf(
-        "专属客服",
-        "免运费券",
-        "生日礼包",
+        "Dedicated support",
+        "Free shipping voucher",
+        "Birthday gift",
     )
 }

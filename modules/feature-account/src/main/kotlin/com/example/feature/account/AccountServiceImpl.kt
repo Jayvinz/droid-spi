@@ -5,8 +5,9 @@ import top.jayvin.android.spi.ServiceProvider
 import top.jayvin.android.spi.ProviderFactory
 
 /**
- * 演示 `@ProviderFactory`：构造器是私有的、且带参数，注册表生成的 `new Impl()` 走不通，
- * 改由静态工厂提供实例，框架生成的字节码是 `INVOKESTATIC`，零反射。
+ * Demonstrates `@ProviderFactory`: the constructor is private and takes an argument, so the
+ * registry's generated `new Impl()` cannot work. A static factory supplies the instance instead,
+ * and the framework generates `INVOKESTATIC` bytecode with zero reflection.
  */
 @ServiceProvider(service = AccountService::class)
 class AccountServiceImpl private constructor(

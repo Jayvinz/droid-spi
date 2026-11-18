@@ -7,10 +7,10 @@ import top.jayvin.android.spi.ServiceProvider
 @ServiceProvider(service = HomeService::class)
 class HomeServiceImpl : HomeService {
 
-    override fun title(): String = "首页 · 默认实现"
+    override fun title(): String = "Home · default implementation"
 
     override fun recommendations(): List<String> = listOf(
-        Trace.line("home", "推荐 A"),
-        Trace.line("home", "推荐 B"),
+        Trace.line("home", "Recommendation A"),
+        Trace.line("home", "Recommendation B"),
     )
 }
