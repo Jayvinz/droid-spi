@@ -10,11 +10,14 @@ pluginManagement {
         mavenCentral()
     }
 }
+plugins {
+    id("org.gradle.toolchains.foojay-resolver-convention") version "0.10.0"
+}
 
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {
-        // spi-annotation / spi-runtime 从本地仓库解析
+        // annotation / runtime 从本地仓库解析
         maven {
             name = "localSpi"
             url = uri("local-repo")
@@ -27,9 +30,9 @@ dependencyResolutionManagement {
 rootProject.name = "android-spi"
 
 // 插件本体（library 模块）
-include(":spi-annotation")
-include(":spi-runtime")
-include(":spi-plugin")
+include(":annotation")
+include(":runtime")
+include(":plugin")
 
 // demo 主模块
 include(":app")

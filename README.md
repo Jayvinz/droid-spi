@@ -34,9 +34,9 @@ META-INF/services ─┘                                                       S
 
 ```
 android-spi/                       单一 Gradle build，所有模块在 settings.gradle.kts 统一 include
-├── spi-annotation/                插件本体：@ServiceProvider / @ProviderFactory（纯 Java 注解，零依赖）
-├── spi-runtime/                   插件本体：ServiceLoader 门面 + provider 状态机 + 安装监听（Android Library）
-├── spi-plugin/                    插件本体：扫描与生成（Gradle Plugin，ASM 生成 class）
+├── annotation/                    插件本体：@ServiceProvider / @ProviderFactory（纯 Java 注解，零依赖）
+├── runtime/                       插件本体：ServiceLoader 门面 + provider 状态机 + 安装监听（Android Library）
+├── plugin/                        插件本体：扫描与生成（Gradle Plugin，ASM 生成 class）
 ├── app/                           demo 主模块（接入方）：manifest 一行 <provider> + 一个 spi{} 配置
 ├── modules/                       demo 非主模块统一放在这里
 │   ├── core-api/                  service 接口层（所有 @ServiceProvider 的 service 都在这里）
@@ -48,13 +48,13 @@ android-spi/                       单一 Gradle build，所有模块在 setting
 └── local-repo/                    publish 产物（本地 maven 仓库，被 gitignore）
 ```
 
-Gradle 模块路径与目录一一对应：`:app`、`:modules:core-api`、`:modules:feature_camera`、`:spi-plugin` 等。
+Gradle 模块路径与目录一一对应：`:app`、`:modules:core-api`、`:modules:feature_camera`、`:plugin` 等。
 
 ## 快速开始
 
 ```bash
 # 1. 发布三个插件模块到本地 maven（local-repo/）；demo 模块从同一仓库消费插件
-./gradlew :spi-annotation:publish :spi-runtime:publish :spi-plugin:publish
+./gradlew :annotation:publish :runtime:publish :plugin:publish
 
 # 2. 构建 demo（同一 build 内）
 ./gradlew :app:assembleDebug      # APK
@@ -64,7 +64,7 @@ Gradle 模块路径与目录一一对应：`:app`、`:modules:core-api`、`:modu
 跑测试：
 
 ```bash
-./gradlew :spi-runtime:testDebugUnitTest
+./gradlew :runtime:testDebugUnitTest
 ```
 
 验证生成物：
@@ -89,8 +89,8 @@ plugins {
 }
 
 dependencies {
-    implementation("top.jayvin.android.spi:spi-annotation:1.0.0")
-    implementation("top.jayvin.android.spi:spi-runtime:1.0.0")
+    implementation("top.jayvin.android.spi:annotation:1.0.0")
+    implementation("top.jayvin.android.spi:runtime:1.0.0")
 }
 ```
 
@@ -276,5 +276,6 @@ public final class GeneratedServiceConfiguration
 ## 环境
 
 - JDK 17、Gradle 8.9、AGP 8.7.3、Kotlin 2.0.21、compileSdk 35
+- Gradle Daemon JVM 由 `gradle/gradle-daemon-jvm.properties` 固定为 17；改版本用 `./gradlew updateDaemonJvm --jvm-version=<版本>`
 - 国内环境如需代理加速依赖下载，取消 `gradle.properties` 里 clash 代理段的注释并按需改端口；默认已注释，不影响其他环境构建
 - Gradle Wrapper 使用官方分发地址，首次构建需联网下载 Gradle 8.9

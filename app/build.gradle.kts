@@ -49,7 +49,7 @@ dependencies {
     implementation(project(":modules:feature-home"))
     implementation(project(":modules:feature-account"))
 
-    implementation("top.jayvin.android.spi:spi-annotation:1.0.0")
+    implementation("top.jayvin.android.spi:annotation:1.0.0")
     // runtime 会传递 play-core（SplitInstallManager / SplitCompat）
-    implementation("top.jayvin.android.spi:spi-runtime:1.0.0")
+    implementation("top.jayvin.android.spi:runtime:1.0.0")
 }

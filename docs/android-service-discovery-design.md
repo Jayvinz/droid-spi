@@ -80,7 +80,7 @@ AAB 的依赖方向是单向的：动态功能模块依赖 base，base 在编译
 
 ### 3.1 注解
 
-注解模块 `spi-annotation` 是**纯 Java 模块**（`java-library`），保证纯 Java 项目能直接引用：
+注解模块 `annotation` 是**纯 Java 模块**（`java-library`），保证纯 Java 项目能直接引用：
 
 ```java
 @Target(ElementType.TYPE)
@@ -445,8 +445,8 @@ WMRouter 的 `ServiceLoader.put()` 是 public static，可以手工接入动态�
 
 | 项 | 命令 / 结果 |
 |---|---|
-| 工具链编译 | `./gradlew :spi-plugin:compileKotlin` ✅ |
-| 运行时单测 | `./gradlew :spi-runtime:testDebugUnitTest` → 6 passed（MISSING→READY、探测不实例化、READY 不重探、DEAD 不重试、未注册 key、stream/findFirst 行为） |
+| 工具链编译 | `./gradlew :plugin:compileKotlin` ✅ |
+| 运行时单测 | `./gradlew :runtime:testDebugUnitTest` → 6 passed（MISSING→READY、探测不实例化、READY 不重探、DEAD 不重试、未注册 key、stream/findFirst 行为） |
 | 示例 APK | `:app:assembleDebug` ✅，`aapt2 dump xmltree` 确认 `<provider>` 在包内 |
 | 示例 AAB | `:app:bundleDebug` ✅，`base` / `feature_camera` 分包 |
 | 生成字节码 | `javap -c` 确认：**无 `<clinit>`**、`providerOf` 只有 `ldc`、`newProvider` 对 `@ProviderFactory` 用 `INVOKESTATIC` |
