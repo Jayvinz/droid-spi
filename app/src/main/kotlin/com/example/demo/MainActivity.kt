@@ -35,7 +35,7 @@ class MainActivity : Activity() {
                 "DOWNLOADING ${state.bytesDownloaded()}/${state.totalBytesToDownload()}"
             SplitInstallSessionStatus.DOWNLOADED -> "DOWNLOADED"
             SplitInstallSessionStatus.INSTALLING -> "INSTALLING"
-            SplitInstallSessionStatus.INSTALLED -> "INSTALLED · 框架已自动 refresh 注册表"
+            SplitInstallSessionStatus.INSTALLED -> "INSTALLED · 下次 load 自动生效"
             SplitInstallSessionStatus.FAILED -> "FAILED errorCode=${state.errorCode()}"
             SplitInstallSessionStatus.CANCELED -> "CANCELED"
             SplitInstallSessionStatus.REQUIRES_USER_CONFIRMATION -> "REQUIRES_USER_CONFIRMATION"
@@ -60,7 +60,7 @@ class MainActivity : Activity() {
         })
 
         root.addView(TextView(this).apply {
-            text = "注册表由 ContentProvider 在 Application 之前初始化"
+            text = "注册表在 Application.onCreate 中直接实例化"
             textSize = 12f
             setTextColor(Color.GRAY)
             setPadding(0, dp(4), 0, dp(12))
@@ -68,11 +68,7 @@ class MainActivity : Activity() {
 
         root.addView(LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            addWeighted(actionButton("刷新") {
-                ServiceLoader.refresh()
-                append("手动 refresh 完成")
-                render()
-            })
+            addWeighted(actionButton("刷新") { render() })
             addWeighted(actionButton("相机模块") { openCamera() })
         })
 

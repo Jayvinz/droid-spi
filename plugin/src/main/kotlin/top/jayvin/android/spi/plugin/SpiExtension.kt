@@ -9,7 +9,7 @@ import org.gradle.api.provider.Provider
  *
  * ```kotlin
  * spi {
- *     generatedPackage = "com.example.app.generated"
+ *     scanMetaInfServices = false
  * }
  * ```
  */
@@ -24,13 +24,11 @@ open class SpiExtension {
      * 只读文本清单，不解压依赖产物、不扫 class。
      */
     var scanMetaInfServices: Boolean = true
-
-    /** 生成类所在包。只有 app 模块的配置生效。 */
-    var generatedPackage: String = "top.jayvin.android.spi.generated"
-
-    /** 生成类名。manifest 里的 `<provider android:name>` 必须等于 `$generatedPackage.$generatedClassName` */
-    var generatedClassName: String = "GeneratedServiceConfiguration"
 }
+
+/** 生成的配置类固定全限定名，必须与 runtime 中 `ServiceLoader` 的反射目标一致。 */
+internal const val GENERATED_PACKAGE = "top.jayvin.android.spi.generated"
+internal const val GENERATED_CLASS_NAME = "ServiceConfiguration"
 
 /**
  * 挂在 root project 上的收集器：每个模块把自己 buildType 维度的扫描任务登记进来，

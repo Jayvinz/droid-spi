@@ -30,7 +30,8 @@ android {
 }
 
 dependencies {
-    api("com.google.android.play:feature-delivery:2.1.0")
+    // 编译期占位：运行时由 app 插件生成的同名 ServiceConfiguration 顶替
+    compileOnly(project(":configuration-stub"))
     testImplementation("junit:junit:4.13.2")
 }
 

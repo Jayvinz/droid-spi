@@ -7,8 +7,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * 不依赖真机，用一个可切换"模块是否已安装"的假配置表来验证状态机：
- * 注册表只做 `providerOf` 探测，模块装好后 `refresh()` 能把它从 MISSING 顶到 READY。
+ * 不依赖真机，用一个可切换"模块是否已安装"的假配置表来验证懒探测：
+ * 未安装时不缓存 MISSING，安装后下一次调用自然就能成功；只有 `<clinit>` 失败会被记住。
  */
 class ProviderRegistryTest {
 
@@ -16,7 +16,7 @@ class ProviderRegistryTest {
     private class Impl : Api
     private class VipImpl : Api
 
-    /** 模拟动态模块：installed=false 时 providerOf 抛 NoClassDefFoundError */
+    /** 模拟动态模块：installed=false 时 providerOf / newProvider 抛 NoClassDefFoundError */
     private class FakeConfiguration(
         var installed: Boolean = false,
         var initFails: Boolean = false,
@@ -32,92 +32,94 @@ class ProviderRegistryTest {
         override fun providerOf(service: Class<*>, key: String): Class<*>? {
             providerOfCalls++
             if (!installed) throw NoClassDefFoundError("Failed resolution of: Lcom/example/Impl;")
-            return if (key == "vip") VipImpl::class.java else Impl::class.java
+            return when (key) {
+                "" -> Impl::class.java
+                "vip" -> VipImpl::class.java
+                else -> null
+            }
         }
 
         override fun newProvider(service: Class<*>, key: String): Any? {
             newProviderCalls++
             if (!installed) throw NoClassDefFoundError("Failed resolution of: Lcom/example/Impl;")
             if (initFails) throw ExceptionInInitializerError("boom in <clinit>")
-            return if (key == "vip") VipImpl() else Impl()
+            return when (key) {
+                "" -> Impl()
+                "vip" -> VipImpl()
+                else -> null
+            }
         }
     }
 
     @Test
-    fun `模块未安装时是 MISSING，安装后 refresh 变 READY`() {
+    fun `模块未安装时是 MISSING，安装后无需 refresh 直接 load 成功`() {
         val configuration = FakeConfiguration(installed = false)
         val registry = ProviderRegistry(configuration)
 
-        registry.refresh()
-        assertEquals(ProviderState.MISSING, registry.stateOf(Api::class.java, ""))
         assertNull(registry.load(Api::class.java))
+        assertEquals(ProviderState.MISSING, registry.stateOf(Api::class.java, ""))
 
-        // 模拟 SplitInstallSessionStatus.INSTALLED
+        // 模拟 SplitInstallSessionStatus.INSTALLED，之后没有任何 refresh 调用
         configuration.installed = true
-        registry.refresh()
 
         assertEquals(ProviderState.READY, registry.stateOf(Api::class.java, ""))
         assertTrue(registry.load(Api::class.java) is Impl)
     }
 
     @Test
-    fun `探测阶段不实例化，只有 load 才触发 newProvider`() {
+    fun `load 直接实例化，不做预探测`() {
         val configuration = FakeConfiguration(installed = true)
         val registry = ProviderRegistry(configuration)
-        registry.refresh()
-
-        assertEquals(ProviderState.READY, registry.stateOf(Api::class.java, ""))
-        assertEquals(0, configuration.newProviderCalls)
 
         registry.load(Api::class.java)
+
         assertEquals(1, configuration.newProviderCalls)
+        assertEquals(0, configuration.providerOfCalls)
     }
 
     @Test
-    fun `repeat refresh 不会重复探测 READY 条目`() {
-        val configuration = FakeConfiguration(installed = true)
+    fun `未安装时每次 load 都会重新尝试，不缓存 MISSING`() {
+        val configuration = FakeConfiguration(installed = false)
         val registry = ProviderRegistry(configuration)
-        registry.refresh()
-        val afterFirst = configuration.providerOfCalls
 
-        registry.refresh()
-        registry.refresh()
+        assertNull(registry.load(Api::class.java))
+        assertNull(registry.load(Api::class.java))
+        assertEquals(2, configuration.newProviderCalls)
 
-        assertEquals(afterFirst, configuration.providerOfCalls)
+        configuration.installed = true
+        assertTrue(registry.load(Api::class.java) is Impl)
+        assertEquals(3, configuration.newProviderCalls)
     }
 
     @Test
-    fun `clinit 失败后标 DEAD，后续 refresh 不再重试`() {
+    fun `clinit 失败后标 DEAD，后续不再重试`() {
         val configuration = FakeConfiguration(installed = true, initFails = true)
         val registry = ProviderRegistry(configuration)
-        registry.refresh()
 
         assertNull(registry.load(Api::class.java))
         assertEquals(ProviderState.DEAD, registry.stateOf(Api::class.java, ""))
 
-        val callsAfterDeath = configuration.providerOfCalls
-        registry.refresh()
+        val callsAfterDeath = configuration.newProviderCalls
         assertNull(registry.load(Api::class.java))
         assertEquals(ProviderState.DEAD, registry.stateOf(Api::class.java, ""))
-        assertEquals(callsAfterDeath, configuration.providerOfCalls)
+        assertEquals(callsAfterDeath, configuration.newProviderCalls)
     }
 
     @Test
     fun `未注册的 key 返回 null`() {
         val configuration = FakeConfiguration(installed = true)
         val registry = ProviderRegistry(configuration)
-        registry.refresh()
 
         assertNull(registry.load(Api::class.java, "unknown"))
         assertNull(registry.loadClass(Api::class.java, "unknown"))
         assertNull(registry.providerOf(Api::class.java, "unknown"))
+        assertNull(registry.stateOf(Api::class.java, "unknown"))
     }
 
     @Test
-    fun `stream 只暴露 READY 的 provider 且 type 不触发实例化`() {
+    fun `stream 只暴露可用的 provider 且 type 不实例化`() {
         val configuration = FakeConfiguration(installed = true)
         val registry = ProviderRegistry(configuration)
-        registry.refresh()
 
         val providers = registry.providers(Api::class.java)
         assertEquals(2, providers.size)
@@ -127,5 +129,16 @@ class ProviderRegistryTest {
         assertEquals(0, configuration.newProviderCalls)
         assertTrue(providers[0].get() is Impl)
         assertEquals(1, configuration.newProviderCalls)
+    }
+
+    @Test
+    fun `模块安装后 stream 无需 refresh 自动出现`() {
+        val configuration = FakeConfiguration(installed = false)
+        val registry = ProviderRegistry(configuration)
+
+        assertEquals(0, registry.providers(Api::class.java).size)
+
+        configuration.installed = true
+        assertEquals(2, registry.providers(Api::class.java).size)
     }
 }

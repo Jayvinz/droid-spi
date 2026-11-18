@@ -38,11 +38,6 @@ android {
     }
 }
 
-spi {
-    generatedPackage = "top.jayvin.android.spi.generated"
-    generatedClassName = "GeneratedServiceConfiguration"
-}
-
 dependencies {
     implementation(project(":modules:core-api"))
     implementation(project(":modules:core-common"))
@@ -50,6 +45,7 @@ dependencies {
     implementation(project(":modules:feature-account"))
 
     implementation("top.jayvin.android.spi:annotation:1.0.0")
-    // runtime 会传递 play-core（SplitInstallManager / SplitCompat）
     implementation("top.jayvin.android.spi:runtime:1.0.0")
+    // demo 自己负责动态模块安装与可见性
+    implementation("com.google.android.play:feature-delivery:2.1.0")
 }

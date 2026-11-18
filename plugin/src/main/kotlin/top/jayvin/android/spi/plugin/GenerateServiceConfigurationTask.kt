@@ -61,7 +61,9 @@ abstract class GenerateServiceConfigurationTask : DefaultTask() {
         }
 
         val bytes = ConfigurationClassGenerator.generate(pkg, simpleName, entries)
-        val dir = outputDir.get().asFile.resolve(pkg.replace('.', '/'))
+        val root = outputDir.get().asFile
+        root.deleteRecursively()
+        val dir = root.resolve(pkg.replace('.', '/'))
         dir.mkdirs()
         dir.resolve("$simpleName.class").writeBytes(bytes)
 

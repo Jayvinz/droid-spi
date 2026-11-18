@@ -2,20 +2,11 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <application
+        android:name=".DemoApp"
         android:allowBackup="false"
         android:label="Android SPI Demo"
         android:supportsRtl="true"
         android:theme="@android:style/Theme.Material.Light">
-
-        <!--
-          唯一的接入胶水：系统在 Application.onCreate 之前实例化这个 provider，
-          它由插件生成（固定全类名），同时也是注册表本体。
-          android:name 必须等于 spi { generatedPackage + generatedClassName }
-        -->
-        <provider
-            android:name="top.jayvin.android.spi.generated.GeneratedServiceConfiguration"
-            android:authorities="${applicationId}.spi-configuration"
-            android:exported="false" />
 
         <activity
             android:name=".MainActivity"

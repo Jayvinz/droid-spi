@@ -1,7 +1,7 @@
 package top.jayvin.android.spi
 
-import android.content.Context
-import top.jayvin.android.spi.internal.InstallWatcher
+import android.util.Log
+import top.jayvin.android.spi.generated.ServiceConfiguration
 import top.jayvin.android.spi.internal.ProviderRegistry
 
 /**
@@ -32,44 +32,53 @@ import top.jayvin.android.spi.internal.ProviderRegistry
  */
 object ServiceLoader {
 
-    /** 默认实现的 key。用空串而非哨兵，因为 key 的语义是"业务变体标签"。 */
+    /** 默认实现的 key：空串表示"无 key"，与业务变体标签区分开。 */
     const val DEFAULT_KEY = ""
 
     @Volatile
     private var registry: ProviderRegistry? = null
 
-    private var watcher: InstallWatcher? = null
-
     /**
-     * 由生成的 [ServiceLoaderInitializer] 在 ContentProvider.onCreate 中调用，
-     * 发生在 `Application.onCreate` 之前，业务代码无需自己初始化。
+     * 应用启动时调用一次（通常在 `Application.onCreate`）。
+     *
+     * 直接实例化 app 模块插件生成的 `ServiceConfiguration`；之后业务代码即可调用 [load]。
+     * provider 是懒探测的：模块安装完成并且类对当前进程可见后，下一次 `load()` 自然成功。
      */
     @JvmStatic
-    fun initialize(context: Context, configuration: ProviderConfiguration) {
+    fun initialize() {
         synchronized(this) {
             if (registry != null) return
-
-            val appContext = context.applicationContext ?: context
-            InstallWatcher.ensureSplitCompat(appContext)
-
-            val reg = ProviderRegistry(configuration)
-            // 先挂监听再首扫：否则"首扫 → 挂监听"之间完成的安装会被漏掉
-            InstallWatcher.create(appContext)?.let { w ->
-                w.attach { reg.refresh() }
-                watcher = w
-            }
-            reg.refresh()
-            registry = reg
+            registry = ProviderRegistry(loadConfiguration())
         }
     }
 
     @JvmStatic
     fun isInitialized(): Boolean = registry != null
 
+    private fun loadConfiguration(): ProviderConfiguration =
+        try {
+            val raw: Any = ServiceConfiguration()
+            raw as? ProviderConfiguration
+                ?: throw IllegalStateException("ServiceConfiguration 未实现 ProviderConfiguration")
+        } catch (t: Throwable) {
+            Log.e(TAG, "ServiceConfiguration 不可用，ServiceLoader 将返回空数据", t)
+            EmptyConfiguration
+        }
+
+    /** app 未 apply 插件时的降级配置：所有查询都返回空。 */
+    private object EmptyConfiguration : ProviderConfiguration {
+        override fun services(): Array<Class<*>> = emptyArray()
+        override fun keys(): Array<String> = emptyArray()
+        override fun providerOf(service: Class<*>, key: String): Class<*>? = null
+        override fun newProvider(service: Class<*>, key: String): Any? = null
+    }
+
+    private const val TAG = "AndroidSpi"
+
     private fun require(): ProviderRegistry =
         registry ?: error(
-            "ServiceLoader 尚未初始化：检查 AndroidManifest 是否声明了 " +
-                "top.jayvin.android.spi.generated.GeneratedServiceConfiguration 这个 <provider>"
+            "ServiceLoader 尚未初始化：在 Application.onCreate 里调用 " +
+                "ServiceLoader.initialize()"
         )
 
     // ── 取实例 ────────────────────────────────────────────────────
@@ -123,22 +132,13 @@ object ServiceLoader {
     fun <T : Any> loadAllClasses(service: Class<T>): List<Class<out T>> =
         require().loadAllClasses(service)
 
-    // ── 动态模块联动 ──────────────────────────────────────────────
-    /**
-     * 重探所有未就绪条目。安装完成的自动路径由 [InstallWatcher] 触发，
-     * 这里只留给调试面板、或接入方自定义的安装通道（如自研插件化）使用。
-     */
-    @JvmStatic
-    fun refresh() {
-        registry?.refresh()
-    }
-
+    // ── 状态查询 ──────────────────────────────────────────────────
     @JvmStatic
     @JvmOverloads
     fun stateOf(service: Class<*>, key: String = DEFAULT_KEY): ProviderState? =
         registry?.stateOf(service, key)
 
-    /** 调试用：整张表的状态快照。 */
+    /** 调试用：整张表的状态快照（每次调用都会重新探测）。 */
     @JvmStatic
     fun snapshot(): List<Triple<String, String, ProviderState>> =
         registry?.snapshot() ?: emptyList()

@@ -6,9 +6,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Android AAB / 多模块工程下的**编译期 SPI（ServiceLoader）框架**。每个模块 apply Gradle 插件扫描
 `@ServiceProvider` 注解与源码目录下的 `META-INF/services/` 文本，app 模块把所有清单聚合成一个
-固定全类名的 `GeneratedServiceConfiguration` class（用 ASM 生成字节码），由 manifest 里的
-`<provider>` 在 `Application.onCreate` 之前实例化。运行时 `ServiceLoader` 门面从这张表取 provider，
-动态模块安装完成后自动重探。全程不用 `Class.forName`、不扫第三方 jar、不做 APT/KSP。
+固定全类名的 `ServiceConfiguration` class（用 ASM 生成字节码），由应用在
+`Application.onCreate` 里调用 `ServiceLoader.initialize()` 直接实例化。
+运行时 `ServiceLoader` 门面从这张表按需取 provider；模块装好后下一次 `load()` 自然成功，无需刷新。
+配置类和 provider 都由类字面量引用（`new` / `ldc`），全程不做 `Class.forName`。
 
 设计文档：`docs/android-service-discovery-design.md`。用户文档：`README.md`（术语对照、接入步骤、已知限制）。
 
@@ -26,7 +27,7 @@ Android AAB / 多模块工程下的**编译期 SPI（ServiceLoader）框架**。
 ./gradlew :runtime:testDebugUnitTest
 # 单个测试类 / 单个测试方法
 ./gradlew :runtime:testDebugUnitTest --tests "top.jayvin.android.spi.ProviderRegistryTest"
-./gradlew :runtime:testDebugUnitTest --tests "top.jayvin.android.spi.ProviderRegistryTest.模块未安装时是 MISSING，安装后 refresh 变 READY"
+./gradlew :runtime:testDebugUnitTest --tests "top.jayvin.android.spi.ProviderRegistryTest.模块未安装时是 MISSING，安装后无需 refresh 直接 load 成功"
 ```
 
 Windows 上用 `gradlew.bat`。`local-repo/` 被 gitignore，**全新 clone 后直接构建 `:app` 会失败**，
@@ -36,7 +37,7 @@ Windows 上用 `gradlew.bat`。`local-repo/` 被 gitignore，**全新 clone 后�
 验证生成物：
 
 ```bash
-javap -p -c app/build/intermediates/classes/debug/DebugGenerateServiceConfiguration/top/jayvin/android/spi/generated/GeneratedServiceConfiguration.class
+javap -p -c app/build/intermediates/classes/debug/DebugGenerateServiceConfiguration/top/jayvin/android/spi/generated/ServiceConfiguration.class
 ```
 
 ## 模块结构
@@ -46,9 +47,10 @@ javap -p -c app/build/intermediates/classes/debug/DebugGenerateServiceConfigurat
 | 路径 | 作用 |
 |---|---|
 | `annotation/` | 纯 Java 注解 `@ServiceProvider` / `@ProviderFactory`，零依赖，`RetentionPolicy.CLASS` |
-| `runtime/` | `ServiceLoader` 门面、`ProviderRegistry` 状态机、`InstallWatcher`（Play 安装监听），Android Library |
+| `runtime/` | `ServiceLoader` 门面、`ProviderRegistry` 按需探测（Android Library，不依赖 Play Core） |
 | `plugin/` | Gradle 插件：`SpiPlugin`、扫描任务、ASM 生成器，`java-gradle-plugin` |
-| `app/` | demo application 模块，唯一注册生成任务的模块；manifest 一行 `<provider>` |
+| `configuration-stub/` | runtime 的 compileOnly 占位类（同名 `ServiceConfiguration`，不发布、不打包） |
+| `app/` | demo application 模块，唯一注册生成任务的模块；Application 调 `ServiceLoader.initialize()` |
 | `modules/core-api/` | 所有 service **接口**（必须常驻 base） |
 | `modules/core-common/` | 只有 `META-INF/services` 配置的常驻 library 示例 |
 | `modules/feature-*/` | provider 实现；`feature_camera` 是 on-demand 动态模块 |
@@ -59,7 +61,7 @@ javap -p -c app/build/intermediates/classes/debug/DebugGenerateServiceConfigurat
 1. **每个模块**（library / dynamic-feature / application）在 `SpiPlugin` 里注册 `{buildType}ScanProviders`
    （如 `debugScanProviders`），扫描 `src/main/java`、`src/main/kotlin`（`scanMetaInfServices=true` 时加
    `src/main/resources`），产出 `build/generated/spi/{buildType}/services.txt`。
-   清单格式：`service \t provider \t key \t factory`。
+   清单格式：`service \t provider \t key \t factory`（key 为空串表示默认变体）。
 2. **只有 application 模块**注册 `{buildType}GenerateServiceConfiguration`，读取所有模块的清单，
    按 `(service, key)` 去重校验（重复即构建失败），用 ASM 生成 class。
 3. 清单在 root project 的 `spiRoot` extension 收集，`projectsEvaluated` 之后才接到生成任务输入，
@@ -71,15 +73,19 @@ javap -p -c app/build/intermediates/classes/debug/DebugGenerateServiceConfigurat
 
 ## 运行时路径
 
-`GeneratedServiceConfiguration` 继承 `ServiceLoaderInitializer`（`ContentProvider`），
-`onCreate()` 调 `ServiceLoader.initialize()`：
-挂 `InstallWatcher`（若 Play 可用）→ 首次 `refresh()` → 存入 registry。
-`ProviderRegistry` 维护 `(service, key) → ProviderState`：
+`ServiceConfiguration` 是普通类（不再继承 ContentProvider），由应用在 `Application.onCreate`
+调用 `ServiceLoader.initialize()`，后者直接 `new top.jayvin.android.spi.generated.ServiceConfiguration`
+（runtime 用 `configuration-stub` 编译期占位；运行时由 app 生成的同名类顶替）。
+该类缺失（app 未 apply 插件）时捕获异常、打日志，并降级为空配置。
+`ProviderRegistry` 不预扫描、不缓存 `MISSING`：
 
-- `probe()` 只调 `providerOf()` 拿 Class，不实例化；`NoClassDefFoundError` → `MISSING`。
-- `refresh()` 只重探 `MISSING`；`READY`/`DEAD` 原样保留（`DEAD` 是 `<clinit>` 失败，不可逆）。
-- `load()` 未就绪返回 `null`（不抛异常）；默认 key 找不到时若该接口只有一个 READY provider 则降级用它。
-- `installWatcher` 收到 `SplitInstallSessionStatus.INSTALLED` → `refresh()`。非 Play 渠道退化为纯静态表。
+- `load()` 直接调 `newProvider()`；类未安装时抛 `NoClassDefFoundError`，捕获后返回 `null`，
+  下次调用再试——所以模块装好后下一次 `load()` 自动成功，没有 `refresh()`。
+- 只缓存 `DEAD`（`<clinit>` 失败，JVM 已标记 erroneous，不可逆）；`stateOf()` 每次按需探测，
+  返回 `READY` / `MISSING` / `DEAD`。
+- `load()` 未就绪返回 `null`（不抛异常）；默认 key 是空串（`ServiceLoader.DEFAULT_KEY`），
+  默认 key 找不到时若该接口只有一个可用 provider 则降级用它。
+- 不再注册 Play 安装监听；`SplitInstallStateUpdatedListener` / `InstallWatcher` 已移除。
 
 ## 修改时必须守住的约束
 
@@ -94,6 +100,7 @@ javap -p -c app/build/intermediates/classes/debug/DebugGenerateServiceConfigurat
 4. `@ProviderFactory` 在 Kotlin 侧必须是 `companion object` 里的 `@ProviderFactory @JvmStatic fun`；
    Java 侧必须在 `static` 方法上，且一个类只能有一个。扫描器对这些情况直接抛 `GradleException`。
 5. Kotlin 调用 Java 注解只接受命名参数：`@ServiceProvider(service = X::class)`。
+6. 默认变体的 key 是空串（`ServiceLoader.DEFAULT_KEY == ""`），key 参数全程非空。
 
 ## 扫描器的边界（改 `SourceScanner` 前先读）
 
@@ -107,8 +114,8 @@ javap -p -c app/build/intermediates/classes/debug/DebugGenerateServiceConfigurat
 ## 已知坑
 
 - 改了插件源码却没重新 publish：demo 仍用 local-repo 里的旧版本，改动"不生效"。
-- `android:name` 必须等于 `spi { generatedPackage + generatedClassName }`（默认
-  `top.jayvin.android.spi.generated.GeneratedServiceConfiguration`）。
+- `ServiceLoader.initialize()` 直接 `new` 固定类名 `top.jayvin.android.spi.generated.ServiceConfiguration`；
+  runtime 通过 `configuration-stub` 的 compileOnly 占位类编译，占位类不会被打包。该类缺失时只打日志并降级为空配置。
 - R8：base 会对未安装模块的类报 missing class，需按模块名补 `-dontwarn`（见 `app/proguard-rules.pro`）。
 - 环境：JDK 17、Gradle 8.9、AGP 8.7.3、Kotlin 2.0.21、compileSdk 35；`local.properties` 含本机 SDK 路径。
 - Gradle Daemon JVM 由 `gradle/gradle-daemon-jvm.properties`（`toolchainVersion=17`）固定；

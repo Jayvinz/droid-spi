@@ -3,7 +3,7 @@ package top.jayvin.android.spi.plugin
 import org.gradle.api.GradleException
 import java.io.File
 
-/** 清单里的一行：`service \t provider \t key \t factory`（factory 为空表示走无参构造） */
+/** 清单里的一行：`service \t provider \t key \t factory`（key 为空串表示默认变体，factory 为空表示走无参构造） */
 internal data class ProviderEntry(
     val service: String,
     val provider: String,

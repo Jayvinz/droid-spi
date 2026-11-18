@@ -12,7 +12,7 @@ import java.io.File
  *
  * <p>只读这几个文本文件，不扫 class、不解压任何依赖产物，开销可忽略。
  * 文件中的每行是一个 provider 全限定名，`#` 起注释，空行忽略。
- * 标准 SPI 配置没有 key / factory 概念，统一映射为默认 key 和无参构造。
+ * 标准 SPI 配置没有 key / factory 概念，统一映射为默认 key（空串）和无参构造。
  */
 internal object ServiceConfigScanner {
 

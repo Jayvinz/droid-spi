@@ -33,6 +33,7 @@ rootProject.name = "android-spi"
 include(":annotation")
 include(":runtime")
 include(":plugin")
+include(":configuration-stub")
 
 // demo 主模块
 include(":app")

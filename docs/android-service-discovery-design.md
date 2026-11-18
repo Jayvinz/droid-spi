@@ -1,8 +1,8 @@
 # Android SPI ServiceLoader · 设计方案（v2，已落地）
 
 > AAB 多模块工程下的编译期 provider 配置表。代码命名对齐 `java.util.ServiceLoader` 的 SPI 词汇。
-> 实现代码：`android-spi/`，示例工程：`android-spi/`（`app/` + `modules/` 为 demo，三个 `spi-*` 为插件本体，单一 build）。
-> 核心特征：**零 `Class.forName`、零 APT/KSP、零第三方 jar 扫描、元数据类字面量化、安装完成自动 refresh**。
+> 实现代码：`android-spi/`，示例工程：`android-spi/`（`app/` + `modules/` 为 demo，`annotation` / `runtime` / `plugin` 为插件本体，单一 build）。
+> 核心特征：**零 `Class.forName`（配置类与 provider 都用类字面量）、零 APT/KSP、零第三方 jar 扫描、元数据类字面量化、provider 按需探测**。
 
 ---
 
@@ -17,18 +17,18 @@ AAB 的依赖方向是单向的：动态功能模块依赖 base，base 在编译
 
 1. base 侧写 `ServiceLoader.load(HomeService::class.java, "vip")` 就能拿到 provider；
 2. provider 可以在常驻 library，也可以在 on-demand 动态模块；
-3. 模块装好后配置表自动重探，`load()` 从返回 null 变成返回实例。
+3. 模块装好后下一次 `load()` 按需探测成功，`load()` 从返回 null 变成返回实例。
 
 ### 1.2 硬性约束（来自实际工程决策）
 
 | 编号 | 约束 | 原因 |
 |---|---|---|
-| C1 | **不用 `Class.forName`** | 反射加载服务类绕开 R8 可见性，失败抛 `Error` 难以治理 |
+| C1 | **不用 `Class.forName`** | 反射加载类绕开 R8 可见性，失败抛 `Error` 难以治理；配置类用 compileOnly 占位类编译出直接 `new` |
 | C2 | **不用 APT / KSP** | 大型工程里 processor 拖慢增量编译 |
 | C3 | **不扫第三方 jar** | 只读自有源码，避免解压/重组数百 MB AAR |
 | C4 | **元数据尽量用类字面量** | 字符串类名 R8 不可见、重构不安全、拼错只能运行时发现 |
 | C5 | **支持动态模块安装后类才可见** | Play Feature Delivery 的核心场景 |
-| C6 | **不提供 `loadOrInstall` 之类复合 API** | 安装触发交给业务或 Play 自身流程，框架只负责"装好了重探表" |
+| C6 | **不提供 `loadOrInstall` 之类复合 API** | 安装触发交给业务或 Play 自身流程，框架只负责"装好后下一次 load 能成功" |
 
 `key` 是唯一保留的字符串维度：它是"同一接口的业务变体标签"（`""` / `"vip"` / `"guest"`），
 不是类名，类型系统也表达不了。
@@ -45,11 +45,10 @@ AAB 的依赖方向是单向的：动态功能模块依赖 base，base 在编译
 |---|---|---|
 | service | `HomeService` 接口 | 下沉在 base 的契约 |
 | service provider | `HomeServiceImpl` | 各 feature 模块的实现 |
-| provider-configuration file | `GeneratedServiceConfiguration`（主）／源码目录 `META-INF/services/`（兼容） | 编译期生成的 class 为主；标准 SPI 文本作为补充输入 |
+| provider-configuration file | `ServiceConfiguration`（主）／源码目录 `META-INF/services/`（兼容） | 编译期生成的 class 为主；标准 SPI 文本作为补充输入 |
 | `ServiceLoader.load(service)` | `ServiceLoader.load(service, key)` | 多了业务变体 key |
 | `ServiceLoader.Provider.type()/get()` | `ServiceLoader.Provider.type()/get()/state()` | 多了 provider 状态 |
 | `ServiceLoader.stream()` | `ServiceLoader.stream()` / `providers()` | 语义一致；Kotlin 侧返回 `Sequence`，Java 侧用 `providers()` 返回 `List` |
-| — | `ServiceLoader.refresh()` | JDK 独有：classpath 不变；AAB 必须 |
 
 差异点：`load()` 直接返回实例而不是 loader 对象；不可用时返回 `null`；多了 `key` 与 `ProviderState`。
 
@@ -59,11 +58,11 @@ AAB 的依赖方向是单向的：动态功能模块依赖 base，base 在编译
 
 ```
 ┌─ 编译期（每个模块） ─────────────┐   ┌─ 聚合期（仅 app） ────────────┐   ┌─ 运行期 ─────────────┐
-│ src/main/**/*.kt|java            │   │  services.txt（全部模块）      │   │ Provider.onCreate    │
-│   ↓ 词法扫描 + 类型解析          │   │   ↓ 合并 + 冲突校验            │   │   ↓ initialize(ctx,c)│
-│ src/main/resources/META-INF/     │   │ GeneratedServiceConfiguration.class      │──▶│ refresh() → READY    │
+│ src/main/**/*.kt|java            │   │  services.txt（全部模块）      │   │ Application.onCreate │
+│   ↓ 词法扫描 + 类型解析          │   │   ↓ 合并 + 冲突校验            │   │   ↓ initialize()    │
+│ src/main/resources/META-INF/     │   │ ServiceConfiguration.class                 │──▶│ 按需 load() → READY  │
 │   services/**  ↓ 标准 SPI 解析   │──▶│   ↓ toAppend(CLASSES)         │   │   ↓ INSTALLED        │
-│ services.txt（service/provider/  │   │ base dex → APK/AAB            │   │ refresh() → READY    │
+│ services.txt（service/provider/  │   │ base dex → APK/AAB            │   │ 下次 load() → READY  │
 │           key/factory）          │   │                               │   │                      │
 └──────────────────────────────────┘   └───────────────────────────────┘   └──────────────────────┘
 ```
@@ -168,7 +167,7 @@ your-module/src/main/resources/META-INF/services/com.example.core.api.LegacyServ
 | 扫描目录 | `src/main/resources` 加入 `sourceDirs`；也兼容 `src/main/java` / `src/main/kotlin` 下任意深度的 `META-INF/services/` |
 | 开关 | `spi { scanMetaInfServices = true }`，默认开启 |
 | 范围 | 只读这些文本文件；**不解压 jar / aar、不扫 class**，延续 C3 |
-| `key` | 标准 SPI 无此概念 → `""` |
+| `key` | 标准 SPI 无此概念 → `""`（默认变体） |
 | 实例化 | 无 factory → 无参构造，**实现类必须有公开无参构造** |
 | 去重 | 与注解声明指向同一 provider（整行相同）时去重；不同实现抢同一 `(service, key)` 由聚合任务报错 |
 | 合法性 | provider 名不匹配 `^[\w.$]+$` 直接构建失败，给出文件名与行内容 |
@@ -192,10 +191,10 @@ com.example.core.api.AccountService	com.example.feature.account.AccountServiceIm
 com.example.core.api.AccountService	com.example.feature.account.GuestAccountServiceImpl	guest
 ```
 
-四列：`service \t provider \t key \t factory`（`factory` 为空表示走无参构造）。
+四列：`service \t provider \t key \t factory`（`key` 为空串表示默认变体，`factory` 为空表示走无参构造）。
 
 `GenerateServiceConfigurationTask` 在 app 模块合并全部清单：校验 `(service, key)` 全局唯一
-（冲突直接报错并列出两个 provider），然后生成 `GeneratedServiceConfiguration` 字节码。
+（冲突直接报错并列出两个 provider），然后生成 `ServiceConfiguration` 字节码。
 
 ### 3.5 字节码生成（三个必须守住的点）
 
@@ -264,84 +263,74 @@ interface ProviderConfiguration {
 把"类在不在"和"类能不能初始化"拆成两个方法，是整套设计能区分
 `MISSING`（模块没装，可重试）与 `DEAD`（`<clinit>` 失败，不可逆）的前提。
 
-### 4.2 状态机与 `refresh()`
+### 4.2 按需探测与 DEAD 缓存
+
+不做预扫描，也不缓存 `MISSING`；`ProviderState` 只是 `stateOf()` 一次查询的结果：
 
 | 状态 | 含义 | 进入条件 |
 |---|---|---|
-| `MISSING` | provider 类当前不可见 | `providerOf` 抛 `NoClassDefFoundError` |
+| `MISSING` | provider 类当前不可见 | `providerOf` 抛 `NoClassDefFoundError` 或返回 null |
 | `READY` | provider 类可解析 | `providerOf` 返回非 null |
 | `DEAD` | 不可用且重试无意义 | `newProvider` 抛 `ExceptionInInitializerError`，或消息含 `Could not initialize class` |
 
-`refresh()` 只重探 `MISSING`：
+`load()` 直接调用 `newProvider()`：
+
+- 成功 → 返回实例；
+- `NoClassDefFoundError`（模块未装）→ 返回 null，**不缓存**，下次调用再试；
+- `<clinit>` 失败 → 加入 `dead` 集合，本进程内不再尝试。
+
+因此没有 `refresh()`，也不存在"装好了但表没更新"的窗口：模块装好后下一次 `load()` 自然成功。
+`DEAD` 是唯一需要记住的状态，避免反复触发同一个初始化失败。
+
+`newProvider` 抛 `Failed resolution of`（模块被卸载）时同样不缓存，下次再试。
+
+### 4.3 初始化入口：compileOnly 占位类
+
+生成类是一个普通的 `final` 类，只实现 `ProviderConfiguration`；由应用在 `Application.onCreate` 里显式初始化：
 
 ```kotlin
-next[slot] = if (old != null && old.state != ProviderState.MISSING) old else probe(slot)
-```
-
-- `READY` 保留 → 已解析的 Class 引用稳定，不会出现两份；
-- `DEAD` 保留 → 不会反复触发同一个类的初始化失败；
-- `MISSING` 重探 → 这是"安装完成后 reinit"的全部内容。
-
-`newProvider` 抛 `Failed resolution of` 时降回 `MISSING`（模块被卸载），而不是标 `DEAD`——
-否则状态永远停在 `READY` 但实例永远造不出来。
-
-### 4.3 初始化入口：为什么用 ContentProvider
-
-生成类同时是配置表本体和初始化入口：
-
-```java
-public final class GeneratedServiceConfiguration
-        extends top.jayvin.android.spi.ServiceLoaderInitializer
-        implements top.jayvin.android.spi.ProviderConfiguration {
-    protected ProviderConfiguration createConfiguration() { return this; }
-}
-```
-
-```kotlin
-abstract class ServiceLoaderInitializer : ContentProvider() {
-    protected abstract fun createConfiguration(): ProviderConfiguration
-    final override fun onCreate(): Boolean {
-        ServiceLoader.initialize(context!!, createConfiguration())
-        return true
-    }
-    // 其余 ContentProvider 方法返回 null / 0
-}
-```
-
-系统按 manifest 的 `<provider android:name="...">` 在 **Application.onCreate 之前**实例化它。
-收益：
-
-- 我们的代码里**没有任何按类名查找**（不是 `Class.forName`）；
-- 配置表在业务代码第一次 `load()` 之前就 ready，不需要在 Application 里手工初始化；
-- 生成类被 manifest 引用，R8 不会删。
-
-代价：接入方要写一行 `<provider>`，且 `android:name` 必须与
-`spi { generatedPackage + generatedClassName }` 一致。这是**唯一的手写胶水**。
-
-### 4.4 安装监听
-
-```kotlin
-private val listener = SplitInstallStateUpdatedListener { state ->
-    if (state.status() == SplitInstallSessionStatus.INSTALLED) {
-        registry.refresh()
+class MyApp : Application() {
+    override fun onCreate() {
+        super.onCreate()
+        ServiceLoader.initialize()
     }
 }
 ```
 
-初始化顺序是**先挂监听、再首扫**：
+`configuration-stub` 模块提供一个同名空类 `top.jayvin.android.spi.generated.ServiceConfiguration`；
+runtime 以 `compileOnly` 依赖它，编译出直接 `new` 的字节码：
 
 ```kotlin
-InstallWatcher.create(appContext)?.let { it.attach { reg.refresh() } }
-reg.refresh()
+val raw: Any = ServiceConfiguration()
+val configuration = raw as? ProviderConfiguration ?: illegal()
 ```
 
-反过来（先首扫再挂监听）会漏掉两者之间完成的安装。
+运行时：
 
-**不需要额外处理的场景**：冷启动（模块早装好，首扫即 READY）、进程被杀后重启（同上）。
-`INSTALLED` 只负责"本次进程内装完"。
+- app 插件生成了同名类 → ClassLoader 解析到真实配置表，直接 `new` 成功；
+- 占位类不发布、不打包，不会与生成类重复；
+- app 未 apply 插件、类不存在 → `new` 抛 `NoClassDefFoundError`，捕获后 `Log.e`，
+  降级为空的 `ProviderConfiguration`；门面 API 仍可调用，只是返回 null / 空集合。
 
-`SplitInstallManagerFactory.create()` 在非 Play 环境会抛异常，此时框架退化为纯静态配置表：
-所有 provider 本来就打进包里，天然全部 READY，行为正确。
+要点：
+
+- provider 实现类仍由生成字节码里的 `ldc` / `new` / `INVOKESTATIC` 引用；配置类也是直接 `new`，
+  全程没有 `Class.forName`。
+- R8 能看到 `new` 引用，存在时自动保留该类；对"未生成"的情况在 `consumer-rules.pro` 用 `-dontwarn`。
+- 初始化时机由应用控制：`Application.onCreate` 早于任何 Activity，业务首次 `load()` 时配置表已就绪。
+- 生成器仍不生成 `<clinit>`：若静态初始化里引用了未安装模块的类，配置类会立刻被标记 erroneous，整表报废。
+
+### 4.4 动态模块可见性
+
+框架不依赖 Play Core，也不调用 `SplitCompat`、不注册安装监听。动态模块安装完成后，类对当前进程是否可见
+由宿主的安装通道决定（Play Feature Delivery 在 API 21+ 由平台处理；其他渠道由宿主自行保证）。
+只要类可解析，下一次 `load()` 就会成功。
+
+需要在 split 内访问自身资源或 Activity 的接入方，按 Play Core 文档自行处理 `SplitCompat`。
+
+**不需要额外处理的场景**：冷启动（模块早装好）、进程被杀后重启（同上）。
+
+非 Play 渠道下动态分发由宿主自己的通道负责；已经打进包里的 provider 仍然正常可用。
 
 ### 4.5 对外门面
 
@@ -358,7 +347,6 @@ object ServiceLoader {
     fun <T : Any> findFirst(service: Class<T>): Provider<T>?
     fun <T : Any> stream(service: Class<T>): Sequence<Provider<T>>
 
-    fun refresh()                                                      // 手动重探
     fun stateOf(service: Class<*>, key: String): ProviderState?
 }
 ```
@@ -378,7 +366,7 @@ for (Provider<HomeService> p : ServiceLoader.providers(HomeService.class)) {
 
 Kotlin 侧则保留 `load<HomeService>()` 内联写法和 `stream()` 的 `Sequence`。
 
-`load(service)` 带一条降级：未指定 key 且该接口只有一个 READY provider 时直接用它，
+`load(service)` 带一条降级：未指定 key（空串）且该接口只有一个 READY provider 时直接用它，
 这样单实现接口不必写 key。
 
 **刻意不提供的东西**：
@@ -403,7 +391,7 @@ Kotlin 侧则保留 `load<HomeService>()` 内联写法和 `stream()` 的 `Sequen
 
 **③ 符号引用解析失败不被缓存。**
 模块装好后再执行同一条 `ldc`，常量池项仍是未解析状态，这次能找到类 → 成功。
-这是"装好后 `refresh()` 就能变 READY"的底层依据。
+这是"模块装好后下一次 `load()` 自动成功"的底层依据。
 
 三条合起来才能推出：**字面量必须放方法体、放 `<clinit>` 会 poison 整表、失败后可以重试**。
 
@@ -415,8 +403,8 @@ Kotlin 侧则保留 `load<HomeService>()` 内联写法和 `stream()` 的 `Sequen
 |---|---|---|---|
 | 注册表生成 | 源码扫描 + 清单 + 生成字节码 | APT + Gradle 插件合并 | APT + 运行时扫 dex |
 | 运行时扫描 | 无 | 无 | 有（扫 dex） |
-| 反射 | 仅"框架按 manifest 实例化 provider" | `Method.invoke` 调 provider | 反射建实例 |
-| 动态模块支持 | 内建（状态机 + INSTALLED refresh） | 无 | 无 |
+| 反射 | 无（compileOnly 占位类 + 直接 `new`；provider 用类字面量） | `Method.invoke` 调 provider | 反射建实例 |
+| 动态模块支持 | 内建（按需探测 + DEAD 缓存） | 无 | 无 |
 | 依赖 APT | 否 | 是 | 是 |
 | 跨模块汇总 | 纯文本清单 | 生成类合并 | 路由表 + dex 扫描 |
 
@@ -446,8 +434,8 @@ WMRouter 的 `ServiceLoader.put()` 是 public static，可以手工接入动态�
 | 项 | 命令 / 结果 |
 |---|---|
 | 工具链编译 | `./gradlew :plugin:compileKotlin` ✅ |
-| 运行时单测 | `./gradlew :runtime:testDebugUnitTest` → 6 passed（MISSING→READY、探测不实例化、READY 不重探、DEAD 不重试、未注册 key、stream/findFirst 行为） |
-| 示例 APK | `:app:assembleDebug` ✅，`aapt2 dump xmltree` 确认 `<provider>` 在包内 |
+| 运行时单测 | `./gradlew :runtime:testDebugUnitTest` → 7 passed（未装返回 null、安装后无需 refresh 直接成功、每次 load 重试、DEAD 不重试、未注册 key、stream 不实例化等） |
+| 示例 APK | `:app:assembleDebug` ✅，manifest 确认 Application；配置类由 `initDebugScanProviders` / `DebugGenerateServiceConfiguration` 生成并打进 base dex |
 | 示例 AAB | `:app:bundleDebug` ✅，`base` / `feature_camera` 分包 |
 | 生成字节码 | `javap -c` 确认：**无 `<clinit>`**、`providerOf` 只有 `ldc`、`newProvider` 对 `@ProviderFactory` 用 `INVOKESTATIC` |
 | 分包正确性 | `dexdump` 确认 `CameraServiceImpl` 只在 `feature_camera/dex`，base dex 只有引用 |

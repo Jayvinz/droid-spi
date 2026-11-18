@@ -28,7 +28,7 @@ class SpiPlugin : Plugin<Project> {
             registerScan(project, buildType, extension)
 
             if (project.plugins.hasPlugin("com.android.application")) {
-                registerGenerate(project, variant, buildType, extension)
+                registerGenerate(project, variant, buildType)
             }
         }
     }
@@ -63,7 +63,6 @@ class SpiPlugin : Plugin<Project> {
         project: Project,
         variant: Variant,
         buildType: String,
-        extension: SpiExtension,
     ) {
         val taskName = "${buildType.capitalized()}GenerateServiceConfiguration"
         if (project.tasks.names.contains(taskName)) return
@@ -74,8 +73,8 @@ class SpiPlugin : Plugin<Project> {
         ) { t ->
             t.group = "spi"
             t.description = "聚合所有模块的 provider 清单，生成 service configuration class"
-            t.packageName.set(extension.generatedPackage)
-            t.className.set(extension.generatedClassName)
+            t.packageName.set(GENERATED_PACKAGE)
+            t.className.set(GENERATED_CLASS_NAME)
             t.outputDir.set(project.layout.buildDirectory.dir("generated/spi/$buildType/classes"))
         }
 
