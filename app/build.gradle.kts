@@ -44,8 +44,8 @@ dependencies {
     implementation(project(":modules:feature-home"))
     implementation(project(":modules:feature-account"))
 
-    implementation("top.jayvin.android.spi:annotation:1.0.0")
-    implementation("top.jayvin.android.spi:runtime:1.0.0")
+    implementation("top.jayvin.android.spi:annotation:$version")
+    implementation("top.jayvin.android.spi:runtime:$version")
     // demo 自己负责动态模块安装与可见性
     implementation("com.google.android.play:feature-delivery:2.1.0")
 }

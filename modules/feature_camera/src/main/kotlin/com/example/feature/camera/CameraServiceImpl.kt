@@ -7,7 +7,7 @@ import com.example.feature.camera.ui.CameraActivity
 /**
  * 动态模块里的服务实现。base 在编译期看不到这个类，
  * 但注册表里有一条 `(CameraService, "")` → 本类的 `ldc` 引用；
- * 模块未安装时该条目是 MISSING，装好后经过一次 refresh 变成 READY。
+ * 模块未安装时该条目不可用，装好后下一次 `load()` 自然成功，无需刷新。
  */
 @ServiceProvider(service = CameraService::class)
 class CameraServiceImpl : CameraService {

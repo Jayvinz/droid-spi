@@ -6,7 +6,4 @@ package top.jayvin.android.spi.generated;
  * 运行时由 app 模块插件生成的同名类顶替，本类不会打进 APK / AAR。
  */
 public final class ServiceConfiguration {
-
-    public ServiceConfiguration() {
-    }
 }

@@ -4,7 +4,7 @@ import android.app.Activity
 import android.graphics.Color
 import android.graphics.Typeface
 import android.os.Bundle
-import android.view.Gravity
+import android.view.View
 import android.view.ViewGroup
 import android.widget.Button
 import android.widget.LinearLayout
@@ -16,6 +16,7 @@ import com.example.core.api.CameraService
 import com.example.core.api.HomeService
 import com.example.core.api.LegacyService
 import top.jayvin.android.spi.ServiceLoader
+import java.util.Locale
 import com.google.android.play.core.splitinstall.SplitInstallManagerFactory
 import com.google.android.play.core.splitinstall.SplitInstallRequest
 import com.google.android.play.core.splitinstall.SplitInstallStateUpdatedListener
@@ -68,7 +69,7 @@ class MainActivity : Activity() {
 
         root.addView(LinearLayout(this).apply {
             orientation = LinearLayout.HORIZONTAL
-            addWeighted(actionButton("刷新") { render() })
+            addWeighted(actionButton("重新渲染") { render() })
             addWeighted(actionButton("相机模块") { openCamera() })
         })
 
@@ -126,7 +127,7 @@ class MainActivity : Activity() {
         ServiceLoader.snapshot().forEach { (api, key, state) ->
             val name = api.substringAfterLast('.')
             val k = if (key.isEmpty()) "\"\"" else key
-            sb.appendLine(pad(name, 22) + pad("key=$k", 14) + state)
+            sb.appendLine(String.format(Locale.US, "%-22s %-14s %s", name, "key=$k", state))
         }
 
         sb.appendLine()
@@ -157,7 +158,7 @@ class MainActivity : Activity() {
     }
 
     private fun append(line: String) {
-        synchronized(log) { log.append(line).append('\n') }
+        log.append(line).append('\n')
         runOnUiThread { render() }
     }
 
@@ -168,17 +169,12 @@ class MainActivity : Activity() {
             setOnClickListener { onClick() }
         }
 
-    private fun LinearLayout.addWeighted(view: android.view.View) {
+    private fun LinearLayout.addWeighted(view: View) {
         addView(view, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
     }
 
     private fun toast(message: String) {
         runOnUiThread { Toast.makeText(this, message, Toast.LENGTH_SHORT).show() }
-    }
-
-    private fun pad(text: String, width: Int): String {
-        if (text.length >= width) return "$text "
-        return text + " ".repeat(width - text.length)
     }
 
     private fun dp(value: Int): Int = (value * resources.displayMetrics.density).toInt()
