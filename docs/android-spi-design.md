@@ -1,12 +1,28 @@
-# Android SPI ServiceLoader · Design (v2, implemented)
+# Android SPI ServiceLoader · Design
 
 > A compile-time provider configuration table for AAB multi-module projects. Naming follows
 > the SPI vocabulary of `java.util.ServiceLoader`.
 > Implementation: `android-spi/`; sample project: `android-spi/` (`app/` + `modules/` are the
 > demo, `annotation` / `runtime` / `plugin` are the framework, all in a single build).
-> Core traits: **zero `Class.forName` (class literals for both configuration and providers),
-> zero APT/KSP, zero third-party jar scanning, metadata via class literals, providers probed
-> on demand**.
+> Core traits: **zero reflection — `Class.forName` is never used and providers are constructed
+> through a direct `new` / `INVOKESTATIC`, never reflective constructor or method calls; zero
+> APT/KSP; zero third-party jar scanning; metadata via class literals; providers probed on
+> demand**.
+>
+> 中文版：[android-spi-design.zh-CN.md](android-spi-design.zh-CN.md)
+
+---
+
+## Contents
+
+1. [Goals and constraints](#1-goals-and-constraints)
+2. [Overall architecture](#2-overall-architecture)
+3. [Compile time](#3-compile-time)
+4. [Runtime](#4-runtime)
+5. [Key JVM semantics](#5-key-jvm-semantics-whether-the-design-holds)
+6. [Comparison with mainstream solutions](#6-comparison-with-mainstream-solutions)
+7. [Boundaries and known risks](#7-boundaries-and-known-risks)
+8. [Verification](#8-verification-executed-locally)
 
 ---
 
@@ -29,7 +45,7 @@ This framework provides:
 
 | ID | Constraint | Reason |
 |---|---|---|
-| C1 | **No `Class.forName`** | Reflection bypasses R8 visibility and throws `Error` that is hard to handle; the configuration class compiles a direct `new` against a compileOnly placeholder |
+| C1 | **No reflection: no `Class.forName`, and no reflective provider construction or method calls** | Reflection bypasses R8 visibility and throws `Error` that is hard to handle. The configuration class compiles a direct `new` against a compileOnly placeholder; providers are constructed with a direct `new` (`INVOKESPECIAL <init>`) or a static factory (`INVOKESTATIC`) |
 | C2 | **No APT / KSP** | Processors slow down incremental builds in large projects |
 | C3 | **No third-party jar scanning** | Read only our own sources; avoid unzipping and reassembling hundreds of MB of AARs |
 | C4 | **Prefer class literals for metadata** | String class names are invisible to R8, unsafe under refactoring, and misspellings only surface at runtime |
@@ -69,7 +85,7 @@ services return `null`; an extra `key` and `ProviderState` are present.
 ┌─ Compile time (per module) ──────┐   ┌─ Aggregation (app only) ──────┐   ┌─ Runtime ────────────┐
 │ src/main/**/*.kt|java            │   │  services.txt (all modules)   │   │ Application.onCreate │
 │   ↓ lexical scan + type resolve  │   │   ↓ merge + conflict check    │   │   ↓ initialize()     │
-│ src/main/resources/META-INF/     │   │ ServiceConfiguration.class    │──▶│ on-demand load() →READY│
+│ src/main/resources/META-INF/     │   │ ServiceConfiguration.class    │──▶│   ↓ load() → READY   │
 │   services/**  ↓ standard SPI    │──▶│   ↓ toAppend(CLASSES)         │   │   ↓ INSTALLED        │
 │ services.txt (service/provider/  │   │ base dex → APK/AAB            │   │ next load() → READY  │
 │           key/factory)           │   │                               │   │                      │
@@ -124,17 +140,23 @@ public class HomeServiceImpl implements HomeService { }
 ```
 
 The scanner supports both forms (`X::class` / `X::class.java` / `X.class`, with or without
-the `service =` prefix).
+the `service =` prefix) and also accepts a positional key after the service:
+`@ServiceProvider(HomeService.class, "vip")`.
 
-**Three hard constraints for `@ProviderFactory`** (validated at build time):
+**Three requirements for `@ProviderFactory`**:
 
 1. Must be a static method (Kotlin needs `@JvmStatic`, Java needs `static`);
 2. Must take no arguments;
 3. The return type must be the enclosing class itself.
 
-The third constraint lets the generated `INVOKESTATIC provider.factory()L<provider>;`
-descriptor be assembled statically. Loosening it to a supertype would require resolving the
-return type FQN: little benefit, large error surface.
+The scanner enforces requirement 1 and allows at most one `@ProviderFactory` per class.
+Requirements 2 and 3 are not validated at build time: the generated
+`INVOKESTATIC provider.factory()L<provider>;` descriptor is assembled statically, so a
+violation produces a descriptor mismatch that fails when the method is resolved at runtime
+(see the risk table in section 7).
+
+The third requirement also lets the descriptor be assembled statically. Loosening it to a
+supertype would require resolving the return type FQN: little benefit, large error surface.
 
 ### 3.2 Scanner
 
@@ -196,7 +218,7 @@ the same path as annotation entries: module manifest → aggregation validation 
 `providerOf` / `newProvider`. Runtime behavior is identical.
 
 Prerequisite: the module must apply the `top.jayvin.android.spi` plugin (otherwise there is no
-`xxScanProviders` task). `modules/core-common` is the minimal example with SPI config only and
+`{buildType}ScanProviders` task). `modules/core-common` is the minimal example with SPI config only and
 no annotations — its manifest output is:
 
 ```
@@ -205,8 +227,8 @@ com.example.core.api.LegacyService  com.example.core.common.LegacyServiceImpl
 
 ### 3.4 Manifests and aggregation
 
-Each module has one `ScanProvidersTask` producing a deterministic manifest (sorted, no
-timestamps):
+Each module has one `ScanProvidersTask` per build type, producing a deterministic manifest
+(sorted, no timestamps):
 
 ```
 com.example.core.api.AccountService	com.example.feature.account.AccountServiceImpl		create
@@ -220,6 +242,9 @@ variant; an empty `factory` means no-arg construction).
 `(service, key)` is globally unique (a conflict fails the build and lists both providers),
 then generates the `ServiceConfiguration` bytecode.
 
+Both tasks are annotated `@CacheableTask`; their deterministic inputs and outputs let Gradle
+restore them from the build cache on clean builds.
+
 ### 3.5 Bytecode generation (three points that must hold)
 
 **① No `<clinit>`.** All class literals appear only inside method bodies:
@@ -227,7 +252,8 @@ then generates the `ServiceConfiguration` bytecode.
 ```java
 public Class providerOf(Class service, String key) {
     if (service == HomeService.class) {
-        if ("".equals(key)) return HomeServiceImpl.class;   // ldc resolves only here
+        if (key.equals(""))    return HomeServiceImpl.class;   // ldc resolves only here
+        if (key.equals("vip")) return VipHomeServiceImpl.class;
         ...
     }
     return null;
@@ -247,7 +273,9 @@ base and are always resolvable.
 15: invokestatic  // Method AccountServiceImpl.create:()LAccountServiceImpl;
 ```
 
-Zero reflection, no `getDeclaredMethod`, the method name is not involved in obfuscation.
+Neither the factory nor provider construction goes through reflection: no `getDeclaredMethod`,
+no `Constructor.newInstance`, and the method name does not participate in obfuscation. Providers
+without a factory are constructed by a direct `new` followed by `INVOKESPECIAL <init>`.
 
 The generator uses `ClassWriter(COMPUTE_FRAMES)` and overrides `getCommonSuperClass` to return
 `Object` — providers may come from uninstalled dynamic modules, so generation must not actually
@@ -294,12 +322,14 @@ from `DEAD` (`<clinit>` failed, irreversible).
 
 ### 4.2 On-demand probing and the DEAD cache
 
+Implementation: `runtime/src/main/kotlin/top/jayvin/android/spi/internal/ProviderRegistry.kt`.
+
 There is no pre-scan and no caching of `MISSING`; `ProviderState` is merely the result of one
 `stateOf()` query:
 
 | State | Meaning | Entered when |
 |---|---|---|
-| `MISSING` | Provider class is currently invisible | `providerOf` throws `NoClassDefFoundError` or returns null |
+| `MISSING` | Provider class is currently invisible | `providerOf` throws (for example `NoClassDefFoundError`) or returns null |
 | `READY` | Provider class is resolvable | `providerOf` returns non-null |
 | `DEAD` | Unavailable and retrying is pointless | `newProvider` throws `ExceptionInInitializerError`, or the message contains `Could not initialize class` |
 
@@ -308,7 +338,9 @@ There is no pre-scan and no caching of `MISSING`; `ProviderState` is merely the 
 - Success → return the instance;
 - `NoClassDefFoundError` (module not installed) → return null, **not cached**, retry on the
   next call;
-- `<clinit>` failure → add to the `dead` set and stop trying for this process.
+- `<clinit>` failure → add to the `dead` set and stop trying for this process;
+- Any other throwable from the factory (a business exception) → return null, not cached, so
+  the next call retries.
 
 So there is no `refresh()` and no window where "it is installed but the table is stale": after
 a module is installed, the next `load()` succeeds naturally.
@@ -317,6 +349,10 @@ initialization failure.
 
 When `newProvider` throws `Failed resolution of` (module uninstalled), it is likewise not cached
 and is retried next time.
+
+`loadClass()` and `stateOf()` report resolution failures as `MISSING` and never record `DEAD`:
+`DEAD` is only recorded by `load()` / `newProvider()` actually initializing a provider, which
+is when an erroneous `<clinit>` becomes observable.
 
 ### 4.3 Initialization entry: the compileOnly placeholder class
 
@@ -354,7 +390,7 @@ Key points:
 
 - Provider implementations are still referenced by `ldc` / `new` / `INVOKESTATIC` in generated
   bytecode; the configuration class is also directly `new`-ed, so there is no `Class.forName`
-  anywhere.
+  and no reflective provider construction anywhere.
 - R8 sees the `new` reference and keeps the class when it exists; for the "not generated" case,
   use `-dontwarn` in `consumer-rules.pro`.
 - Initialization timing is controlled by the app: `Application.onCreate` runs before any
@@ -380,29 +416,45 @@ restart after being killed (same).
 On non-Play channels, dynamic delivery is handled by the host's own channel; providers already
 packaged in the APK remain available.
 
+In the sample, `:app` depends on Play Feature Delivery and drives `SplitInstallManager`;
+`:modules:feature_camera` is the on-demand split.
+
 ### 4.5 Public facade
+
+Implementation: `runtime/src/main/kotlin/top/jayvin/android/spi/ServiceLoader.kt`.
 
 ```kotlin
 object ServiceLoader {
-    fun <T : Any> load(service: Class<T>, key: String = ""): T?        // default / specific variant
-    inline fun <reified T : Any> load(key: String = ""): T?
-    fun <T : Any> loadClass(service: Class<T>, key: String = ""): Class<out T>?
+    const val DEFAULT_KEY = ""
+
+    fun initialize()
+    fun isInitialized(): Boolean
+
+    fun <T : Any> load(service: Class<T>, key: String = DEFAULT_KEY): T?
+    inline fun <reified T : Any> load(key: String = DEFAULT_KEY): T?
+    fun <T : Any> loadClass(service: Class<T>, key: String = DEFAULT_KEY): Class<out T>?
     fun <T : Any> loadAll(service: Class<T>): Map<String, T>
     fun <T : Any> loadAllClasses(service: Class<T>): List<Class<out T>>
 
     // Aligned with the java.util.ServiceLoader Provider model
-    fun <T : Any> providerOf(service: Class<T>, key: String = ""): Provider<T>?
+    fun <T : Any> providerOf(service: Class<T>, key: String = DEFAULT_KEY): Provider<T>?
     fun <T : Any> findFirst(service: Class<T>): Provider<T>?
     fun <T : Any> stream(service: Class<T>): Sequence<Provider<T>>
+    fun <T : Any> providers(service: Class<T>): List<Provider<T>>
 
-    fun stateOf(service: Class<*>, key: String): ProviderState?
+    fun stateOf(service: Class<*>, key: String = DEFAULT_KEY): ProviderState?
+    fun snapshot(): List<Triple<String, String, ProviderState>>
 }
 ```
 
-Everything returns `null` instead of throwing: an unavailable service is a normal state, not
-an error.
+`initialize()` must run before lookups and is idempotent — later calls are no-ops. Calling a
+lookup method before `initialize()` throws `IllegalStateException`; `stateOf()` and
+`snapshot()` are safe before initialization and return null / an empty list. `initialize()`
+itself never throws — a missing generated class degrades to an empty configuration. Once
+initialized, an unavailable service is a normal state and the lookup methods return null (or
+an empty collection) instead of throwing.
 
-All public Java-facing methods are `@JvmStatic`, but Java lacks reified generics, so pass Class
+Every non-inline public method is `@JvmStatic`; Java lacks reified generics, so pass Class
 literals; `Sequence` is awkward to iterate in Java, so `providers()` returns a `List`:
 
 ```java
@@ -416,14 +468,14 @@ for (Provider<HomeService> p : ServiceLoader.providers(HomeService.class)) {
 Kotlin keeps the inline `load<HomeService>()` form and the `Sequence` from `stream()`.
 
 `load(service)` has one fallback: when no key is specified (empty string) and the interface has
-exactly one READY provider, use it directly, so single-implementation interfaces do not need a
-key.
+exactly one available variant, use it directly, so single-implementation interfaces do not need
+a key.
 
 **Deliberately not provided**:
 
 | Not provided | Reason |
 |---|---|
-| `loadOrInstall` / `awaitService` | Installation is asynchronous, so the first call cannot return an instance; mixing it in makes the return value ambiguous (downloading / unregistered / never available) and requires a cross-module wait queue. Business code composes it itself (6 lines in the sample app) |
+| `loadOrInstall` / `awaitService` | Installation is asynchronous, so the first call cannot return an instance; mixing it in makes the return value ambiguous (downloading / unregistered / never available) and requires a cross-module wait queue. Business code composes it itself (see `MainActivity.openCamera` in the sample app) |
 | Annotation-level `singleton` | The cache key would be the provider's `Class`; after a split is uninstalled and reinstalled, the old instance prevents the old ClassLoader from being collected. Providers needing a cache can use `@ProviderFactory` to return a cached object |
 | `callMethod(key, args...)` | Purely string-based method lookup conflicts with "metadata via class literals" |
 | `getService(service, context)` | Dependencies come from the `@ProviderFactory` body, avoiding the "factory only takes effect on first use for singletons" pitfall |
@@ -456,10 +508,15 @@ Only the three together imply: **literals must live in method bodies, putting th
 |---|---|---|---|
 | Registry generation | Source scan + manifest + generated bytecode | APT + Gradle plugin merge | APT + runtime dex scan |
 | Runtime scanning | None | None | Yes (dex scan) |
-| Reflection | None (compileOnly placeholder + direct `new`; providers via class literals) | `Method.invoke` to call providers | Reflection to instantiate |
-| Dynamic module support | Built in (on-demand probing + DEAD cache) | None | None |
+| Reflection | None (direct `new` / `INVOKESTATIC`; no `Class.forName`, no `Constructor.newInstance`) | `Method.invoke` to call providers | Reflection to instantiate |
+| Dynamic module support | Late-bound providers: availability is probed on every `load()` and `MISSING` is never cached; only the irreversible `DEAD` (`<clinit>` failure) is remembered. Installation and split visibility are owned by the host (no Play Core dependency) | Manual only (`ServiceLoader.put()`) | None |
 | APT dependency | No | Yes | Yes |
 | Cross-module aggregation | Plain-text manifests | Generated-class merge | Route table + dex scan |
+
+Scope of "dynamic module support": the framework resolves providers that become visible after
+a split is installed, but it does not trigger, track, or force installation. The demo's `:app`
+owns Play Feature Delivery (`SplitInstallManager`) and any `SplitCompat` calls; `runtime` has
+no Play dependency, and `:modules:feature_camera` is the on-demand sample split.
 
 WMRouter's `ServiceLoader.put()` is public static and can manually integrate dynamic modules,
 but its table stores `Class` literals and initializes once (`mHasInit`); once any `ldc` in
@@ -472,13 +529,14 @@ but its table stores `Class` literals and initializes once (`mHasInit`); once an
 
 | Risk | Description | Mitigation |
 |---|---|---|
-| Interfaces must live in base | If an interface literal in `services()` comes from a dynamic module, the whole table breaks | Convention + review; v2 adds build-time ownership validation |
+| Interfaces must live in base | If an interface literal in `services()` comes from a dynamic module, the whole table breaks | Convention + code review (no build-time ownership check yet) |
 | Wrong package when the interface is not imported | A wrong FQN is not exposed at build time | Fail the build when `import a.b.*` exists; otherwise require explicit imports |
-| Only `src/main` is scanned | Flavor directories and custom source sets are not covered; `META-INF/services` is only recognized in source dirs, not dependency artifacts | v2 will use `variant.sources` |
+| Only `src/main` is scanned | Flavor directories and custom source sets are not covered; `META-INF/services` is only recognized in source dirs, not dependency artifacts | Documented limitation; future work: derive sources from `variant.sources` |
+| `@ProviderFactory` signature unchecked | Argument count and return type are not validated; a mismatch produces a descriptor that fails at runtime | Keep factories no-arg and returning the enclosing type; violations surface as `NoSuchMethodError` when the provider is first loaded |
 | Aggregation per buildType | Flavor-exclusive services do not enter the table | Multi-flavor projects must align per variant |
 | Nested classes / `typealias` unsupported | The scanner resolves top-level types | Documented limitation; declare services as top-level interfaces |
 | R8 missing classes | Base referencing uninstalled module classes warns | Add `-dontwarn` per module (sample provided) |
-| Non-Play channels | Dynamic delivery does not apply | Degrades to a static configuration table; all providers are READY by nature |
+| Non-Play channels | The framework has no built-in install channel; split visibility depends on the host | Host implements its own delivery channel; providers packaged in the APK remain READY |
 | Configuration cache | Uses `projectsEvaluated` and cross-project Providers | Do not enable configuration cache before migrating to isolated projects |
 
 ---
@@ -488,9 +546,10 @@ but its table stores `Class` literals and initializes once (`mHasInit`); once an
 | Item | Command / result |
 |---|---|
 | Toolchain compile | `./gradlew :plugin:compileKotlin` ✅ |
-| Runtime unit tests | `./gradlew :runtime:testDebugUnitTest` → 7 passed (returns null while uninstalled, succeeds after install without refresh, retries on every load, DEAD not retried, unknown key, stream does not instantiate, etc.) |
-| Sample APK | `:app:assembleDebug` ✅; manifest confirms the Application; the configuration class is generated by `initDebugScanProviders` / `DebugGenerateServiceConfiguration` and packed into the base dex |
+| Runtime unit tests | `./gradlew :runtime:testDebugUnitTest` → 7 passed on the JVM (returns null while uninstalled, succeeds after install without refresh, retries on every load, DEAD not retried, unknown key, stream does not instantiate, etc.) |
+| Sample APK | `:app:assembleDebug` ✅; manifest confirms the Application; the configuration class is generated by `DebugScanProviders` / `DebugGenerateServiceConfiguration` and packed into the base dex |
 | Sample AAB | `:app:bundleDebug` ✅, `base` / `feature_camera` splits |
+| Incremental build | A second `:app:assembleDebug` leaves all `ScanProviders` / `GenerateServiceConfiguration` tasks UP-TO-DATE, confirming the cacheable task wiring |
 | Generated bytecode | `javap -c` confirms: **no `<clinit>`**, `providerOf` only uses `ldc`, `newProvider` uses `INVOKESTATIC` for `@ProviderFactory` |
 | Split correctness | `dexdump` confirms `CameraServiceImpl` only exists in `feature_camera/dex`; base dex only has references |
 | Standard SPI config | `modules/core-common`'s `META-INF/services/...LegacyService` is scanned into the manifest (`LegacyService → LegacyServiceImpl`); generated bytecode contains `ldc LegacyServiceImpl` and `new LegacyServiceImpl`; `MainActivity` calls `ServiceLoader.load(LegacyService::class.java)` and gets a non-null instance |

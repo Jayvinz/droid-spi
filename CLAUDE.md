@@ -5,8 +5,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Language
 
 Prefer English for all code comments, KDoc/Javadoc, README and design documents, and
-developer-facing diagnostics (log and exception messages). Use another language only when
-the user explicitly asks for it.
+developer-facing diagnostics (log and exception messages). Use another language only when the
+user explicitly asks for it, or for an explicitly maintained translation such as
+`docs/android-spi-design.zh-CN.md`.
 
 ## Project overview
 
@@ -19,9 +20,10 @@ name (generated as bytecode with ASM). The app instantiates it directly from
 At runtime the `ServiceLoader` facade resolves providers from this table on demand; once a
 module is installed, the next `load()` succeeds without any refresh. Both the configuration
 class and providers are referenced through class literals (`new` / `ldc`); there is no
-`Class.forName` anywhere.
+`Class.forName` and no reflective provider construction anywhere.
 
-Design document: `docs/android-spi-design.md`. User documentation: `README.md`
+Design document: `docs/android-spi-design.md` (Chinese: `docs/android-spi-design.zh-CN.md`).
+User documentation: `README.md`
 (terminology mapping, integration steps, known limitations).
 
 ## Common commands
@@ -124,7 +126,8 @@ These are correctness red lines, not style preferences:
    may come from uninstalled dynamic modules; ASM must not actually load them.
 4. A `@ProviderFactory` must be a `@ProviderFactory @JvmStatic fun` inside a `companion object`
    on the Kotlin side, or a `static` method on the Java side, and a class may have only one.
-   The scanner raises `GradleException` for all violations.
+   The scanner enforces the static form and uniqueness; the no-argument and self-return-type
+   requirements are not validated, so violations fail at runtime (`NoSuchMethodError`).
 5. Kotlin only accepts named arguments for Java annotations:
    `@ServiceProvider(service = X::class)`.
 6. The default variant key is the empty string (`ServiceLoader.DEFAULT_KEY == ""`); the key

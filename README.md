@@ -11,10 +11,12 @@ shipped by third-party jars / aars under the JDK SPI convention).
 
 Runtime compiles a direct `new` against the generated class by using a compileOnly
 placeholder class; at runtime the app plugin's generated same-name class takes its place.
-Providers are referenced through class literals too, so there is no `Class.forName` anywhere.
+Providers are referenced through class literals too, so there is no `Class.forName` and no
+reflective constructor or method call anywhere.
 
 > For the full design background, JVM semantics and comparison with other solutions, see
-> [docs/android-spi-design.md](docs/android-spi-design.md).
+> [docs/android-spi-design.md](docs/android-spi-design.md)
+> ([中文版](docs/android-spi-design.zh-CN.md)).
 
 ```
 Scan (per module)                              Aggregate (app)                 Runtime
@@ -189,6 +191,8 @@ for (Provider<HomeService> p : ServiceLoader.providers(HomeService.class)) {
 
 All `load*` methods return `null` instead of throwing: an unavailable service
 (a dynamic module that is not installed) is a normal state, not an error.
+Call `initialize()` before any lookup; calling a lookup method before initialization throws
+`IllegalStateException`.
 
 ## Compatible with standard SPI configuration (META-INF/services)
 
@@ -240,7 +244,7 @@ The framework performs no pre-scan and caches no `MISSING` state. Provider class
 inside `providerOf` / `newProvider` are resolved only when the corresponding branch executes,
 so after a module is installed:
 
-1. Call Play's `startInstall()` anywhere in the process;
+1. Trigger installation through the host's channel (for example Play's `startInstall()`);
 2. Once installation completes, the dynamic module's classes become visible to the process
    (guaranteed by the host's install channel; the framework does not intervene);
 3. The next `ServiceLoader.load()` probes on demand and gets an instance directly.

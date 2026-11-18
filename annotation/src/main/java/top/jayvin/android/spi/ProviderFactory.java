@@ -23,13 +23,17 @@ import java.lang.annotation.Target;
  * }
  * }</pre>
  *
- * <p>Three hard constraints (violations fail the build):
+ * <p>Requirements:
  * <ol>
- *   <li>Must be a static method; on Kotlin it needs a companion object + &#64;JvmStatic;</li>
+ *   <li>Must be a static method; on Kotlin it needs a companion object + &#64;JvmStatic.
+ *       The scanner enforces this form and allows at most one factory per class;</li>
  *   <li>Must take no arguments;</li>
  *   <li>The return type must be the enclosing class itself, so the generated INVOKESTATIC
  *       descriptor can be assembled statically.</li>
  * </ol>
+ *
+ * <p>Requirements 2 and 3 are not checked at build time; a violation produces a descriptor
+ * mismatch that fails as a NoSuchMethodError when the provider is first loaded.
  */
 @Target(ElementType.METHOD)
 @Retention(RetentionPolicy.CLASS)
