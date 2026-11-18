@@ -1,7 +1,7 @@
 package com.example.feature.camera
 
 import com.example.core.api.CameraService
-import top.fishquant.mobile.spi.ServiceProvider
+import top.jayvin.android.spi.ServiceProvider
 import com.example.feature.camera.ui.CameraActivity
 
 /**

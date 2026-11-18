@@ -1,7 +1,7 @@
 package com.example.feature.account
 
 import com.example.core.api.AccountService
-import top.fishquant.mobile.spi.ServiceProvider
+import top.jayvin.android.spi.ServiceProvider
 
 @ServiceProvider(service = AccountService::class, key = "guest")
 class GuestAccountServiceImpl : AccountService {

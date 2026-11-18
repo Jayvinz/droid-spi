@@ -69,7 +69,7 @@ cd sample
 
 ```bash
 # 配置类字节码：只有方法体引用实现类，没有 <clinit>
-javap -p -c sample/app/build/intermediates/classes/debug/DebugGenerateServiceConfiguration/top/fishquant/mobile/spi/generated/GeneratedServiceConfiguration.class
+javap -p -c sample/app/build/intermediates/classes/debug/DebugGenerateServiceConfiguration/top/jayvin/android/spi/generated/GeneratedServiceConfiguration.class
 
 # 确认 provider 进了 APK、配置类进了 base dex
 "D:/Android/Sdk/build-tools/35.0.0/aapt2.exe" dump xmltree sample/app/build/outputs/apk/debug/app-debug.apk --file AndroidManifest.xml
@@ -83,12 +83,12 @@ javap -p -c sample/app/build/intermediates/classes/debug/DebugGenerateServiceCon
 plugins {
     id("com.android.application")     // library / dynamic-feature 同理
     id("org.jetbrains.kotlin.android")
-    id("top.fishquant.mobile.spi")
+    id("top.jayvin.android.spi")
 }
 
 dependencies {
-    implementation("top.fishquant.mobile.spi:spi-annotation:1.0.0")
-    implementation("top.fishquant.mobile.spi:spi-runtime:1.0.0")
+    implementation("top.jayvin.android.spi:spi-annotation:1.0.0")
+    implementation("top.jayvin.android.spi:spi-runtime:1.0.0")
 }
 ```
 
@@ -96,7 +96,7 @@ dependencies {
 
 ```xml
 <provider
-    android:name="top.fishquant.mobile.spi.generated.GeneratedServiceConfiguration"
+    android:name="top.jayvin.android.spi.generated.GeneratedServiceConfiguration"
     android:authorities="${applicationId}.spi-configuration"
     android:exported="false" />
 ```
@@ -189,7 +189,7 @@ com.thirdparty.SomeOtherImpl   # 多个也支持
 - 每条配置进入清单后与注解声明走完全相同的聚合与字节码生成流程，运行时无差别；
 - 两种声明指向**同一 provider 实现类**时按整行去重，不算冲突；不同实现类抢同一 `(service, key="")` 仍会构建报错。
 
-> 该模块必须 apply `top.fishquant.mobile.spi` 插件，否则没有 `xxScanProviders` 任务，配置不会被扫描。
+> 该模块必须 apply `top.jayvin.android.spi` 插件，否则没有 `xxScanProviders` 任务，配置不会被扫描。
 > `sample/core-common` 就是只有 SPI 配置、没有注解的最小示例。
 
 ## 动态模块安装后发生了什么

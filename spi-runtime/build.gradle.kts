@@ -5,7 +5,7 @@ plugins {
 }
 
 android {
-    namespace = "top.fishquant.mobile.spi"
+    namespace = "top.jayvin.android.spi"
     compileSdk = 35
 
     defaultConfig {

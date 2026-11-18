@@ -176,7 +176,7 @@ your-module/src/main/resources/META-INF/services/com.example.core.api.LegacyServ
 每条配置映射成 `ProviderEntry(service, provider, "", "")`，之后与注解来源完全同路：
 进入模块清单 → 聚合校验 → 生成 class 的 `providerOf` / `newProvider`。运行时无差别。
 
-前置条件：该模块必须 apply `top.fishquant.mobile.spi` 插件（否则没有 `xxScanProviders` 任务）。
+前置条件：该模块必须 apply `top.jayvin.android.spi` 插件（否则没有 `xxScanProviders` 任务）。
 `sample/core-common` 就是只有 SPI 配置、没有注解的最小示例 —— 它的清单输出为：
 
 ```
@@ -291,8 +291,8 @@ next[slot] = if (old != null && old.state != ProviderState.MISSING) old else pro
 
 ```java
 public final class GeneratedServiceConfiguration
-        extends top.fishquant.mobile.spi.ServiceLoaderInitializer
-        implements top.fishquant.mobile.spi.ProviderConfiguration {
+        extends top.jayvin.android.spi.ServiceLoaderInitializer
+        implements top.jayvin.android.spi.ProviderConfiguration {
     protected ProviderConfiguration createConfiguration() { return this; }
 }
 ```

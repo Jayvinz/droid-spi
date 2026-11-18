@@ -1,7 +1,7 @@
 plugins {
     id("com.android.library")
     id("org.jetbrains.kotlin.android")
-    id("top.fishquant.mobile.spi")
+    id("top.jayvin.android.spi")
 }
 
 android {
@@ -24,5 +24,5 @@ android {
 
 dependencies {
     implementation(project(":core-api"))
-    implementation("top.fishquant.mobile.spi:spi-annotation:1.0.0")
+    implementation("top.jayvin.android.spi:spi-annotation:1.0.0")
 }

@@ -2,7 +2,7 @@ plugins {
     id("com.android.library")
     id("org.jetbrains.kotlin.android")
     // core-common 没有 @ServiceProvider 注解，但需要它来扫描 src/main/resources/META-INF/services
-    id("top.fishquant.mobile.spi")
+    id("top.jayvin.android.spi")
 }
 
 android {

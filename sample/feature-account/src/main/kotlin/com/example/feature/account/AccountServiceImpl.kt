@@ -1,8 +1,8 @@
 package com.example.feature.account
 
 import com.example.core.api.AccountService
-import top.fishquant.mobile.spi.ServiceProvider
-import top.fishquant.mobile.spi.ProviderFactory
+import top.jayvin.android.spi.ServiceProvider
+import top.jayvin.android.spi.ProviderFactory
 
 /**
  * 演示 `@ProviderFactory`：构造器是私有的、且带参数，注册表生成的 `new Impl()` 走不通，

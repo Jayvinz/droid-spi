@@ -1,7 +1,7 @@
 plugins {
     id("com.android.dynamic-feature")
     id("org.jetbrains.kotlin.android")
-    id("top.fishquant.mobile.spi")
+    id("top.jayvin.android.spi")
 }
 
 android {
@@ -26,6 +26,6 @@ dependencies {
     implementation(project(":app"))
     implementation(project(":core-api"))
     implementation(project(":core-common"))
-    implementation("top.fishquant.mobile.spi:spi-annotation:1.0.0")
-    implementation("top.fishquant.mobile.spi:spi-runtime:1.0.0")
+    implementation("top.jayvin.android.spi:spi-annotation:1.0.0")
+    implementation("top.jayvin.android.spi:spi-runtime:1.0.0")
 }

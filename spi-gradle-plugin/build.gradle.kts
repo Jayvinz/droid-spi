@@ -17,10 +17,10 @@ dependencies {
 gradlePlugin {
     plugins {
         create("spi") {
-            id = "top.fishquant.mobile.spi"
+            id = "top.jayvin.android.spi"
             displayName = "Android SPI service loader"
             description = "编译期扫描 @ServiceProvider，生成固定全类名的 provider configuration"
-            implementationClass = "top.fishquant.mobile.spi.plugin.SpiPlugin"
+            implementationClass = "top.jayvin.android.spi.plugin.SpiPlugin"
         }
     }
 }
