@@ -2,7 +2,7 @@ package com.example.feature.home
 
 import com.example.core.api.HomeService
 import com.example.core.common.Trace
-import com.example.spi.ServiceProvider
+import top.fishquant.mobile.spi.ServiceProvider
 
 @ServiceProvider(service = HomeService::class)
 class HomeServiceImpl : HomeService {

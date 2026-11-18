@@ -13,7 +13,7 @@
           android:name 必须等于 spi { generatedPackage + generatedClassName }
         -->
         <provider
-            android:name="com.example.spi.generated.GeneratedServiceConfiguration"
+            android:name="top.fishquant.mobile.spi.generated.GeneratedServiceConfiguration"
             android:authorities="${applicationId}.spi-configuration"
             android:exported="false" />
 

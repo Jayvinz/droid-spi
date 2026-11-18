@@ -9,7 +9,7 @@ plugins {
 val localRepo = rootProject.layout.projectDirectory.dir("local-repo")
 
 subprojects {
-    group = "com.example.spi"
+    group = "top.fishquant.mobile.spi"
     version = "1.0.0"
 
     plugins.withId("maven-publish") {

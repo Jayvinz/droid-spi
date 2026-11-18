@@ -3,5 +3,5 @@ plugins {
     id("com.android.library") version "8.7.3" apply false
     id("com.android.dynamic-feature") version "8.7.3" apply false
     id("org.jetbrains.kotlin.android") version "2.0.21" apply false
-    id("com.example.spi") version "1.0.0" apply false
+    id("top.fishquant.mobile.spi") version "1.0.0" apply false
 }

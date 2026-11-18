@@ -1,7 +1,7 @@
 package com.example.feature.account
 
 import com.example.core.api.AccountService
-import com.example.spi.ServiceProvider
+import top.fishquant.mobile.spi.ServiceProvider
 
 @ServiceProvider(service = AccountService::class, key = "guest")
 class GuestAccountServiceImpl : AccountService {

@@ -15,7 +15,7 @@ import com.example.core.api.AccountService
 import com.example.core.api.CameraService
 import com.example.core.api.HomeService
 import com.example.core.api.LegacyService
-import com.example.spi.ServiceLoader
+import top.fishquant.mobile.spi.ServiceLoader
 import com.google.android.play.core.splitinstall.SplitInstallManagerFactory
 import com.google.android.play.core.splitinstall.SplitInstallRequest
 import com.google.android.play.core.splitinstall.SplitInstallStateUpdatedListener

@@ -1,7 +1,7 @@
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
-    id("com.example.spi")
+    id("top.fishquant.mobile.spi")
 }
 
 android {
@@ -39,7 +39,7 @@ android {
 }
 
 spi {
-    generatedPackage = "com.example.spi.generated"
+    generatedPackage = "top.fishquant.mobile.spi.generated"
     generatedClassName = "GeneratedServiceConfiguration"
 }
 
@@ -49,7 +49,7 @@ dependencies {
     implementation(project(":feature-home"))
     implementation(project(":feature-account"))
 
-    implementation("com.example.spi:spi-annotation:1.0.0")
+    implementation("top.fishquant.mobile.spi:spi-annotation:1.0.0")
     // runtime 会传递 play-core（SplitInstallManager / SplitCompat）
-    implementation("com.example.spi:spi-runtime:1.0.0")
+    implementation("top.fishquant.mobile.spi:spi-runtime:1.0.0")
 }
