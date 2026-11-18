@@ -22,7 +22,8 @@ internal object ConfigurationClassGenerator {
 
     fun generate(pkg: String, simpleName: String, rawEntries: List<ProviderEntry>): ByteArray {
         val entries = rawEntries.sortedWith(compareBy({ it.service }, { it.key }))
-        val owner = if (pkg.isEmpty()) simpleName else pkg.replace('.', '/') + "/" + simpleName
+        val owner = if (pkg.isEmpty()) simpleName else "${pkg.toInternalName()}/$simpleName"
+        val grouped = entries.groupBy { it.service }
 
         val cw = object : ClassWriter(COMPUTE_FRAMES or COMPUTE_MAXS) {
             // 实现类可能来自尚未安装的动态模块，不能真的去加载它们
@@ -39,10 +40,10 @@ internal object ConfigurationClassGenerator {
         )
 
         emitConstructor(cw)
-        emitServices(cw, entries)
-        emitKeys(cw, entries)
-        emitProviderOf(cw, entries)
-        emitNewProvider(cw, entries)
+        emitServices(cw, grouped.keys.toList())
+        emitKeys(cw, entries.map { it.key })
+        emitProviderOf(cw, grouped)
+        emitNewProvider(cw, grouped)
         cw.visitEnd()
 
         return cw.toByteArray()
@@ -58,16 +59,30 @@ internal object ConfigurationClassGenerator {
         mv.visitEnd()
     }
 
-    private fun emitServices(cw: ClassWriter, entries: List<ProviderEntry>) {
-        val services = entries.map { it.service }.distinct()
-        val mv = cw.visitMethod(Opcodes.ACC_PUBLIC, "services", "()[Ljava/lang/Class;", null, null)
+    private fun emitServices(cw: ClassWriter, services: List<String>) =
+        emitConstantArray(
+            cw, "services", "java/lang/Class",
+            services.map { Type.getObjectType(it.toInternalName()) },
+        )
+
+    private fun emitKeys(cw: ClassWriter, keys: List<String>) =
+        emitConstantArray(cw, "keys", "java/lang/String", keys)
+
+    /** `{ANEWARRAY; DUP; index; ldc; AASTORE}` 的固定套路，services() 与 keys() 共用。 */
+    private fun emitConstantArray(
+        cw: ClassWriter,
+        methodName: String,
+        componentType: String,
+        values: List<Any>,
+    ) {
+        val mv = cw.visitMethod(Opcodes.ACC_PUBLIC, methodName, "()[L$componentType;", null, null)
         mv.visitCode()
-        pushInt(mv, services.size)
-        mv.visitTypeInsn(Opcodes.ANEWARRAY, "java/lang/Class")
-        services.forEachIndexed { i, service ->
+        mv.visitLdcInsn(values.size)
+        mv.visitTypeInsn(Opcodes.ANEWARRAY, componentType)
+        values.forEachIndexed { i, value ->
             mv.visitInsn(Opcodes.DUP)
-            pushInt(mv, i)
-            mv.visitLdcInsn(Type.getObjectType(service.replace('.', '/')))
+            mv.visitLdcInsn(i)
+            mv.visitLdcInsn(value)
             mv.visitInsn(Opcodes.AASTORE)
         }
         mv.visitInsn(Opcodes.ARETURN)
@@ -75,23 +90,7 @@ internal object ConfigurationClassGenerator {
         mv.visitEnd()
     }
 
-    private fun emitKeys(cw: ClassWriter, entries: List<ProviderEntry>) {
-        val mv = cw.visitMethod(Opcodes.ACC_PUBLIC, "keys", "()[Ljava/lang/String;", null, null)
-        mv.visitCode()
-        pushInt(mv, entries.size)
-        mv.visitTypeInsn(Opcodes.ANEWARRAY, "java/lang/String")
-        entries.forEachIndexed { i, entry ->
-            mv.visitInsn(Opcodes.DUP)
-            pushInt(mv, i)
-            mv.visitLdcInsn(entry.key)
-            mv.visitInsn(Opcodes.AASTORE)
-        }
-        mv.visitInsn(Opcodes.ARETURN)
-        mv.visitMaxs(0, 0)
-        mv.visitEnd()
-    }
-
-    private fun emitProviderOf(cw: ClassWriter, entries: List<ProviderEntry>) {
+    private fun emitProviderOf(cw: ClassWriter, grouped: Map<String, List<ProviderEntry>>) {
         val mv = cw.visitMethod(
             Opcodes.ACC_PUBLIC,
             "providerOf",
@@ -101,8 +100,8 @@ internal object ConfigurationClassGenerator {
         )
         mv.visitCode()
         val end = Label()
-        emitServiceKeyChain(mv, entries, end) { entry ->
-            mv.visitLdcInsn(Type.getObjectType(entry.provider.replace('.', '/')))
+        emitServiceKeyChain(mv, grouped, end) { entry ->
+            mv.visitLdcInsn(Type.getObjectType(entry.provider.toInternalName()))
             mv.visitInsn(Opcodes.ARETURN)
         }
         mv.visitLabel(end)
@@ -112,7 +111,7 @@ internal object ConfigurationClassGenerator {
         mv.visitEnd()
     }
 
-    private fun emitNewProvider(cw: ClassWriter, entries: List<ProviderEntry>) {
+    private fun emitNewProvider(cw: ClassWriter, grouped: Map<String, List<ProviderEntry>>) {
         val mv = cw.visitMethod(
             Opcodes.ACC_PUBLIC,
             "newProvider",
@@ -122,8 +121,8 @@ internal object ConfigurationClassGenerator {
         )
         mv.visitCode()
         val end = Label()
-        emitServiceKeyChain(mv, entries, end) { entry ->
-            val impl = entry.provider.replace('.', '/')
+        emitServiceKeyChain(mv, grouped, end) { entry ->
+            val impl = entry.provider.toInternalName()
             if (entry.factory.isEmpty()) {
                 mv.visitTypeInsn(Opcodes.NEW, impl)
                 mv.visitInsn(Opcodes.DUP)
@@ -146,14 +145,14 @@ internal object ConfigurationClassGenerator {
      */
     private fun emitServiceKeyChain(
         mv: MethodVisitor,
-        entries: List<ProviderEntry>,
+        grouped: Map<String, List<ProviderEntry>>,
         end: Label,
         onHit: (ProviderEntry) -> Unit,
     ) {
-        entries.groupBy { it.service }.forEach { (service, group) ->
+        grouped.forEach { (service, group) ->
             val nextService = Label()
             mv.visitVarInsn(Opcodes.ALOAD, 1)
-            mv.visitLdcInsn(Type.getObjectType(service.replace('.', '/')))
+            mv.visitLdcInsn(Type.getObjectType(service.toInternalName()))
             mv.visitJumpInsn(Opcodes.IF_ACMPNE, nextService)
 
             group.forEach { entry ->
@@ -171,15 +170,6 @@ internal object ConfigurationClassGenerator {
 
             mv.visitJumpInsn(Opcodes.GOTO, end)
             mv.visitLabel(nextService)
-        }
-    }
-
-    private fun pushInt(mv: MethodVisitor, value: Int) {
-        when {
-            value <= 5 -> mv.visitInsn(Opcodes.ICONST_0 + value)
-            value <= Byte.MAX_VALUE -> mv.visitIntInsn(Opcodes.BIPUSH, value)
-            value <= Short.MAX_VALUE -> mv.visitIntInsn(Opcodes.SIPUSH, value)
-            else -> mv.visitLdcInsn(value)
         }
     }
 }

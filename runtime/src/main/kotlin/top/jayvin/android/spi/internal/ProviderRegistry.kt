@@ -30,7 +30,7 @@ internal class ProviderRegistry internal constructor(
             "provider configuration 损坏：services=${services.size} keys=${keys.size}"
         }
         services.indices.groupBy { services[it] }
-            .mapValues { (_, indexes) -> indexes.map { keys[it] } }
+            .mapValues { (_, indexes) -> indexes.map { keys[it] }.sorted() }
     }
 
     private val dead = ConcurrentHashMap.newKeySet<Slot>()
@@ -41,10 +41,20 @@ internal class ProviderRegistry internal constructor(
 
         // 降级：未指定 key，且该接口只有一个可用 provider 时直接用它
         if (key == ServiceLoader.DEFAULT_KEY) {
-            val available = keysOf(service).filter { loadClass(service, it) != null }
-            if (available.size == 1) return instantiate(service, available[0])
+            singleAvailableKey(service)?.let { return instantiate(service, it) }
         }
         return null
+    }
+
+    /** 恰好一个可用变体时返回它的 key；0 个或多个都不需要降级，看到第二个就提前返回。 */
+    private fun singleAvailableKey(service: Class<*>): String? {
+        var found: String? = null
+        for (key in keysOf(service)) {
+            if (loadClass(service, key) == null) continue
+            if (found != null) return null
+            found = key
+        }
+        return found
     }
 
     /** 只取 Class，不实例化，不触发 provider 的 `<clinit>`。 */
@@ -64,31 +74,32 @@ internal class ProviderRegistry internal constructor(
     /** 该接口下所有可用变体。 */
     fun <T : Any> loadAll(service: Class<T>): Map<String, T> {
         val out = LinkedHashMap<String, T>()
-        keysOf(service).sorted().forEach { k -> instantiate(service, k)?.let { out[k] = it } }
+        keysOf(service).forEach { k -> instantiate(service, k)?.let { out[k] = it } }
         return out
     }
 
     /** 该接口下所有可用 provider 类。 */
     fun <T : Any> loadAllClasses(service: Class<T>): List<Class<out T>> =
-        keysOf(service).sorted().mapNotNull { loadClass(service, it) }
+        keysOf(service).mapNotNull { loadClass(service, it) }
 
     /** 对齐 `ServiceLoader.stream()`：只返回可用 provider 的句柄。 */
     fun <T : Any> providers(service: Class<T>): List<Provider<T>> =
-        keysOf(service).sorted().mapNotNull { key ->
-            loadClass(service, key)?.let { handle(service, key) }
+        keysOf(service).mapNotNull { key ->
+            loadClass(service, key)?.let { handle(service, key, it) }
         }
 
     /** 对齐 `ServiceLoader.iterator()` 的单点取用。 */
     fun <T : Any> providerOf(service: Class<T>, key: String): Provider<T>? =
-        if (loadClass(service, key) != null) handle(service, key) else null
+        loadClass(service, key)?.let { handle(service, key, it) }
 
-    private fun <T : Any> handle(service: Class<T>, key: String): Provider<T> =
+    /** 句柄在取得时已解析出 provider 类，[Provider.type] 不再重复探测。 */
+    private fun <T : Any> handle(
+        service: Class<T>,
+        key: String,
+        type: Class<out T>,
+    ): Provider<T> =
         object : Provider<T> {
-            override fun type(): Class<out T> {
-                @Suppress("UNCHECKED_CAST")
-                return loadClass(service, key)
-                    ?: throw NoClassDefFoundError("provider 不可用：$service#$key")
-            }
+            override fun type(): Class<out T> = type
 
             override fun get(): T? = load(service, key)
 
@@ -140,6 +151,7 @@ internal class ProviderRegistry internal constructor(
         }
     }
 
+    /** 构造时已按 key 排序，调用方无需重复排序。 */
     private fun keysOf(service: Class<*>): List<String> =
         keysByService[service].orEmpty()
 }

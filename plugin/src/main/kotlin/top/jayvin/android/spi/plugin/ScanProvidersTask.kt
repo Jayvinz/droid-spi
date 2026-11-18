@@ -3,6 +3,7 @@ package top.jayvin.android.spi.plugin
 import org.gradle.api.DefaultTask
 import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.file.RegularFileProperty
+import org.gradle.api.tasks.CacheableTask
 import org.gradle.api.tasks.InputFiles
 import org.gradle.api.tasks.OutputFile
 import org.gradle.api.tasks.PathSensitive
@@ -14,6 +15,7 @@ import org.gradle.api.tasks.TaskAction
  *
  * 清单是**确定性输出**（排序、无时间戳），这样下游的生成任务在源码没变时能命中 UP-TO-DATE。
  */
+@CacheableTask
 abstract class ScanProvidersTask : DefaultTask() {
 
     @get:InputFiles
@@ -26,7 +28,7 @@ abstract class ScanProvidersTask : DefaultTask() {
     @TaskAction
     fun run() {
         val files = sourceDirs.asFileTree
-            .matching { it.include("**/*.kt", "**/*.java", "**/META-INF/services/**") }
+            .matching { it.include("**/*.kt", "**/*.java", "**/$META_INF_SERVICES**") }
             .files
             .sortedBy { it.path }
 
@@ -36,11 +38,13 @@ abstract class ScanProvidersTask : DefaultTask() {
         }
         val configFiles = files - sourceFiles.toSet()
 
+        // 每个源文件只读一次，去注释 / 掩码的结果由索引与注解扫描共用。
+        val documents = sourceFiles.map { SourceDocument(it.name, it.readText()) }
         val index = TypeIndex()
-        sourceFiles.forEach { file -> SourceScanner.collectTypes(file.readText(), index) }
+        documents.forEach { SourceScanner.collectTypes(it.masked, index) }
 
         val scanner = SourceScanner(index)
-        val fromSource = sourceFiles.flatMap { scanner.scan(it) }
+        val fromSource = documents.flatMap { scanner.scan(it) }
         val fromServiceConfig = ServiceConfigScanner.scan(configFiles)
 
         // 同一 provider 可能既被注解声明、又被第三方 jar 的 META-INF/services 声明，

@@ -5,6 +5,7 @@ import org.gradle.api.GradleException
 import org.gradle.api.file.ConfigurableFileCollection
 import org.gradle.api.file.DirectoryProperty
 import org.gradle.api.provider.Property
+import org.gradle.api.tasks.CacheableTask
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.InputFiles
 import org.gradle.api.tasks.OutputDirectory
@@ -17,6 +18,7 @@ import org.gradle.api.tasks.TaskAction
  *
  * 只读文本清单、只写 class 目录，不读 `ScopedArtifact.CLASSES`，所以不存在"边读边写"的环。
  */
+@CacheableTask
 abstract class GenerateServiceConfigurationTask : DefaultTask() {
 
     @get:InputFiles
@@ -63,7 +65,7 @@ abstract class GenerateServiceConfigurationTask : DefaultTask() {
         val bytes = ConfigurationClassGenerator.generate(pkg, simpleName, entries)
         val root = outputDir.get().asFile
         root.deleteRecursively()
-        val dir = root.resolve(pkg.replace('.', '/'))
+        val dir = root.resolve(pkg.toInternalName())
         dir.mkdirs()
         dir.resolve("$simpleName.class").writeBytes(bytes)
 

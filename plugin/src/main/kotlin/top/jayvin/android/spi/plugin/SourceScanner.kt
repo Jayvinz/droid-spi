@@ -1,7 +1,6 @@
 package top.jayvin.android.spi.plugin
 
 import org.gradle.api.GradleException
-import java.io.File
 
 /** 清单里的一行：`service \t provider \t key \t factory`（key 为空串表示默认变体，factory 为空表示走无参构造） */
 internal data class ProviderEntry(
@@ -40,6 +39,12 @@ internal class TypeIndex {
         bySimpleName[simple]?.takeIf { it.size == 1 }?.first()
 }
 
+/** 一个源文件的一次预处理结果：类型索引与注解扫描共用，避免重复读盘与重复词法处理。 */
+internal class SourceDocument(val fileName: String, raw: String) {
+    val clean: String = SourceText.stripComments(raw)
+    val masked: String = SourceText.maskStrings(clean)
+}
+
 /**
  * 源码扫描器。只读 `src/main` 下的 .kt / .java，不碰任何依赖 jar。
  *
@@ -49,27 +54,40 @@ internal class TypeIndex {
  */
 internal class SourceScanner(private val index: TypeIndex) {
 
-    private data class ClassDecl(val name: String, val bodyStart: Int, val bodyEnd: Int)
+    /** [body] 为 null 表示该类没有大括号类体（Kotlin `class Foo : Bar`）。 */
+    private data class ClassDecl(val name: String, val body: IntRange?)
 
-    fun scan(file: File): List<ProviderEntry> {
-        val clean = SourceText.stripComments(file.readText())
-        val masked = SourceText.maskStrings(clean)
+    fun scan(doc: SourceDocument): List<ProviderEntry> {
+        val clean = doc.clean
+        val masked = doc.masked
 
-        val pkg = PACKAGE_RE.find(masked)?.groupValues?.get(1).orEmpty()
+        val pkg = packageOf(masked)
         val (explicitImports, wildcards) = parseImports(masked)
 
         val out = ArrayList<ProviderEntry>()
+        var cursor = 0
+        var line = 1
+
+        // 注解匹配位置递增，游标只前进不回退，整体 O(文件长度)
+        fun lineAt(offset: Int): Int {
+            while (cursor < offset) {
+                if (masked[cursor] == '\n') line++
+                cursor++
+            }
+            return line
+        }
+
         SERVICE_PROVIDER_RE.findAll(masked).forEach { m ->
             val open = m.range.last
             val close = matchPair(masked, open, '(', ')')
-            val where = "${file.name}:${lineOf(masked, m.range.first)}"
+            val where = "${doc.fileName}:${lineAt(m.range.first)}"
 
             val args = clean.substring(open + 1, close)
             val (serviceExpr, key) = parseArgs(args, where)
-            val service = resolve(serviceExpr, pkg, explicitImports, wildcards, file, where)
+            val service = resolve(serviceExpr, pkg, explicitImports, wildcards, doc.fileName, where)
 
             val decl = findClassDecl(masked, close + 1, where)
-            val provider = if (pkg.isEmpty()) decl.name else "$pkg.${decl.name}"
+            val provider = qualify(pkg, decl.name)
             val factory = findFactory(masked, decl, where)
 
             out += ProviderEntry(service, provider, key, factory)
@@ -94,11 +112,7 @@ internal class SourceScanner(private val index: TypeIndex) {
                     key = stringLiteral(part.substringAfter('='))
                         ?: throw GradleException("$where: key 必须是字符串字面量，实际是 `$part`")
 
-                serviceExpr == null && (
-                    part.endsWith("::class") ||
-                        part.endsWith("::class.java") ||
-                        part.endsWith(".class")
-                    ) -> serviceExpr = part
+                serviceExpr == null && classLiteralName(part) != null -> serviceExpr = part
 
                 serviceExpr != null && part.startsWith("\"") ->
                     key = stringLiteral(part)
@@ -144,16 +158,22 @@ internal class SourceScanner(private val index: TypeIndex) {
         return out
     }
 
-    /** `Home::class` / `Home::class.java` / `Home.class` → `Home` */
-    private fun parseServiceType(expr: String, where: String): String {
+    /** `Home::class` / `Home::class.java` / `Home.class` → `Home`；不是类字面量时返回 null */
+    private fun classLiteralName(expr: String): String? {
         val trimmed = expr.trim()
-        val name = when {
+        return when {
             trimmed.endsWith("::class.java") -> trimmed.removeSuffix("::class.java")
             trimmed.endsWith("::class") -> trimmed.removeSuffix("::class")
             trimmed.endsWith(".class") -> trimmed.removeSuffix(".class")
-            else -> throw GradleException("$where: service 参数必须写成 `X::class` 或 `X.class`，实际是 `$expr`")
+            else -> null
         }
-        val clean = name.trim()
+    }
+
+    /** service 参数必须是类字面量；返回去掉字面量后缀的原始名字。 */
+    private fun parseServiceType(expr: String, where: String): String {
+        val clean = (classLiteralName(expr)
+            ?: throw GradleException("$where: service 参数必须写成 `X::class` 或 `X.class`，实际是 `$expr`"))
+            .trim()
         if (clean.isEmpty() || clean.contains('<') || clean.contains('*')) {
             throw GradleException("$where: 无法解析 service 类型 `$expr`")
         }
@@ -165,7 +185,7 @@ internal class SourceScanner(private val index: TypeIndex) {
         pkg: String,
         explicitImports: Map<String, String>,
         wildcards: List<String>,
-        file: File,
+        fileName: String,
         where: String,
     ): String {
         val raw = parseServiceType(expr, where)
@@ -173,14 +193,14 @@ internal class SourceScanner(private val index: TypeIndex) {
         if (raw.contains('.')) return raw
 
         explicitImports[raw]?.let { return it }
-        val samePkg = if (pkg.isEmpty()) raw else "$pkg.$raw"
+        val samePkg = qualify(pkg, raw)
         if (index.contains(samePkg)) return samePkg
         index.unique(raw)?.let { return it }
 
         if (wildcards.isNotEmpty()) {
             throw GradleException(
                 "$where: 无法确定 `$raw` 的全限定名（存在 `import ${wildcards.first()}.*`，" +
-                    "且该类型不在本模块内）。请改成显式 import 或写全限定名。file=${file.name}"
+                    "且该类型不在本模块内）。请改成显式 import 或写全限定名。file=$fileName"
             )
         }
         return samePkg
@@ -193,26 +213,25 @@ internal class SourceScanner(private val index: TypeIndex) {
         val name = m.groupValues[2]
 
         val brace = masked.indexOf('{', m.range.last + 1)
-        if (brace < 0 || brace - m.range.last > 300) return ClassDecl(name, -1, -1)
+        if (brace < 0 || brace - m.range.last > MAX_CLASS_HEADER) return ClassDecl(name, null)
         // 中间又出现新的类声明，说明当前类没有类体（Kotlin `class Foo : Bar` 无大括号）
         if (DECL_RE.containsMatchIn(masked.substring(m.range.last + 1, brace))) {
-            return ClassDecl(name, -1, -1)
+            return ClassDecl(name, null)
         }
-        return ClassDecl(name, brace, matchPair(masked, brace, '{', '}'))
+        return ClassDecl(name, brace..matchPair(masked, brace, '{', '}'))
     }
 
     private fun findFactory(masked: String, decl: ClassDecl, where: String): String {
-        if (decl.bodyStart < 0) return ""
+        val body = decl.body ?: return ""
+        val end = body.last + 1
 
-        val idx = masked.indexOf("@ProviderFactory", decl.bodyStart)
-        if (idx < 0 || idx > decl.bodyEnd) return ""
-
-        val second = masked.indexOf("@ProviderFactory", idx + 1)
-        if (second in (idx + 1)..decl.bodyEnd) {
+        val idx = indexOfIn(masked, "@ProviderFactory", body.first, end)
+        if (idx < 0) return ""
+        if (indexOfIn(masked, "@ProviderFactory", idx + 1, end) >= 0) {
             throw GradleException("$where: 一个类里只能有一个 @ProviderFactory")
         }
 
-        val tail = masked.substring(idx, minOf(idx + 400, decl.bodyEnd))
+        val tail = masked.substring(idx, minOf(idx + MAX_FACTORY_WINDOW, end))
 
         val kotlinFun = KOTLIN_FUN.find(tail)
         if (kotlinFun != null) {
@@ -251,8 +270,12 @@ internal class SourceScanner(private val index: TypeIndex) {
         throw GradleException("括号不匹配：offset=$open")
     }
 
-    private fun lineOf(masked: String, index: Int): Int =
-        masked.substring(0, index.coerceAtMost(masked.length)).count { it == '\n' } + 1
+    /** 只在 `[from, to)` 里查找，避免在类体之外命中其他类的注解。 */
+    private fun indexOfIn(text: String, needle: String, from: Int, to: Int): Int {
+        if (from >= to) return -1
+        val i = text.indexOf(needle, from)
+        return if (i in from until to) i else -1
+    }
 
     private fun parseImports(masked: String): Pair<Map<String, String>, List<String>> {
         val explicit = HashMap<String, String>()
@@ -270,6 +293,9 @@ internal class SourceScanner(private val index: TypeIndex) {
     }
 
     companion object {
+        private const val MAX_CLASS_HEADER = 300
+        private const val MAX_FACTORY_WINDOW = 400
+
         private val PACKAGE_RE = Regex("""^\s*package\s+([\w.]+)""", RegexOption.MULTILINE)
         private val IMPORT_RE = Regex("""^\s*import\s+([\w.*]+)(?:\s+as\s+(\w+))?""", RegexOption.MULTILINE)
         private val SERVICE_PROVIDER_RE = Regex("""@ServiceProvider\s*\(""")
@@ -279,14 +305,16 @@ internal class SourceScanner(private val index: TypeIndex) {
         private val STATIC_RE = Regex("""\bstatic\b""")
         private val JAVA_FUN = Regex("""([A-Za-z_]\w*)\s*\(""")
 
+        private fun packageOf(masked: String): String =
+            PACKAGE_RE.find(masked)?.groupValues?.get(1).orEmpty()
+
+        private fun qualify(pkg: String, name: String): String =
+            if (pkg.isEmpty()) name else "$pkg.$name"
+
         /** 把一个源文件里声明的类型全部登记进索引，供全模块范围的名字解析使用 */
-        fun collectTypes(raw: String, index: TypeIndex) {
-            val masked = SourceText.maskStrings(SourceText.stripComments(raw))
-            val pkg = PACKAGE_RE.find(masked)?.groupValues?.get(1).orEmpty()
-            DECL_RE.findAll(masked).forEach { m ->
-                val name = m.groupValues[2]
-                index.register(if (pkg.isEmpty()) name else "$pkg.$name")
-            }
+        fun collectTypes(masked: String, index: TypeIndex) {
+            val pkg = packageOf(masked)
+            DECL_RE.findAll(masked).forEach { m -> index.register(qualify(pkg, m.groupValues[2])) }
         }
     }
 }

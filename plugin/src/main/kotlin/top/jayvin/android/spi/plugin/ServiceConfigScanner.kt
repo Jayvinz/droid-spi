@@ -16,7 +16,6 @@ import java.io.File
  */
 internal object ServiceConfigScanner {
 
-    private const val MARKER = "META-INF/services/"
     private val CLASS_NAME = Regex("""^[\w.$]+$""")
 
     fun scan(files: Collection<File>): List<ProviderEntry> {
@@ -27,9 +26,9 @@ internal object ServiceConfigScanner {
 
             // 兼容 Windows 分隔符；文件名就是 service 全限定名
             val path = file.path.replace('\\', '/')
-            val at = path.indexOf(MARKER)
+            val at = path.indexOf(META_INF_SERVICES)
             if (at < 0) return@forEach
-            val service = path.substring(at + MARKER.length)
+            val service = path.substring(at + META_INF_SERVICES.length)
             if (service.isEmpty() || service.contains('/')) return@forEach
 
             file.readLines().forEach { raw ->
