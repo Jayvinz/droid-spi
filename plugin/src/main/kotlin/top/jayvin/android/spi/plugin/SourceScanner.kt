@@ -48,16 +48,18 @@ internal class SourceDocument(val fileName: String, raw: String) {
 /**
  * Source scanner. It reads only `.kt` / `.java` under `src/main` and never touches dependency jars.
  *
- * Explicitly unsupported forms **fail the build** instead of silently generating a wrong table:
+ * Forms the scanner cannot resolve **fail the build** instead of silently generating a wrong table:
  * - `import a.b.*` where the type is neither explicitly imported nor declared in this module
  *   (the FQN cannot be determined)
- * - nested classes or `typealias` as the `@ServiceProvider` service
+ *
+ * Nested classes and `typealias` are not supported: the scanner resolves top-level types only.
  */
 internal class SourceScanner(private val index: TypeIndex) {
 
     /** A null [body] means the class has no brace-delimited body (Kotlin `class Foo : Bar`). */
     private data class ClassDecl(val name: String, val body: IntRange?)
 
+    /** Scans one preprocessed source document for `@ServiceProvider` entries. */
     fun scan(doc: SourceDocument): List<ProviderEntry> {
         val clean = doc.clean
         val masked = doc.masked

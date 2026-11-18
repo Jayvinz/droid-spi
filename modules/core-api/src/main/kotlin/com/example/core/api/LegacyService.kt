@@ -6,5 +6,6 @@ package com.example.core.api
  * core-common.
  */
 interface LegacyService {
+    /** Returns the description produced by the META-INF-declared provider. */
     fun describe(): String
 }

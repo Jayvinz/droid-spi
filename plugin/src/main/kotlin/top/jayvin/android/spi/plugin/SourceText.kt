@@ -10,6 +10,7 @@ package top.jayvin.android.spi.plugin
  */
 internal object SourceText {
 
+    /** Replaces comments with spaces while keeping string contents and offsets intact. */
     fun stripComments(src: String): String {
         val out = src.toCharArray()
         var i = 0
@@ -68,6 +69,7 @@ internal object SourceText {
         return String(out)
     }
 
+    /** Replaces string contents (including quotes) with spaces while preserving newlines and offsets. */
     fun maskStrings(src: String): String {
         val out = src.toCharArray()
         var i = 0

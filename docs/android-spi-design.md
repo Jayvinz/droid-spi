@@ -476,7 +476,7 @@ but its table stores `Class` literals and initializes once (`mHasInit`); once an
 | Wrong package when the interface is not imported | A wrong FQN is not exposed at build time | Fail the build when `import a.b.*` exists; otherwise require explicit imports |
 | Only `src/main` is scanned | Flavor directories and custom source sets are not covered; `META-INF/services` is only recognized in source dirs, not dependency artifacts | v2 will use `variant.sources` |
 | Aggregation per buildType | Flavor-exclusive services do not enter the table | Multi-flavor projects must align per variant |
-| Nested classes / `typealias` unsupported | The scanner resolves top-level types | Fails the build rather than staying silent |
+| Nested classes / `typealias` unsupported | The scanner resolves top-level types | Documented limitation; declare services as top-level interfaces |
 | R8 missing classes | Base referencing uninstalled module classes warns | Add `-dontwarn` per module (sample provided) |
 | Non-Play channels | Dynamic delivery does not apply | Degrades to a static configuration table; all providers are READY by nature |
 | Configuration cache | Uses `projectsEvaluated` and cross-project Providers | Do not enable configuration cache before migrating to isolated projects |

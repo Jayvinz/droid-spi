@@ -12,12 +12,27 @@ package top.jayvin.android.spi
  */
 interface Provider<S : Any> {
 
-    /** The provider implementation class. Resolves only; does not trigger `<clinit>`. */
+    /**
+     * Returns the provider implementation class.
+     *
+     * Resolves the class only; does not trigger `<clinit>`.
+     *
+     * @return the provider implementation class
+     */
     fun type(): Class<out S>
 
-    /** Gets an instance; triggers `<clinit>`. Returns null when the module has been uninstalled, etc. */
+    /**
+     * Returns a new provider instance, triggering the provider's `<clinit>`.
+     *
+     * @return a provider instance, or null when the provider is no longer available (for
+     *   example, its dynamic module was uninstalled)
+     */
     fun get(): S?
 
-    /** Current state, usually [ProviderState.READY]. */
+    /**
+     * Returns the provider's current state.
+     *
+     * @return the current state, usually [ProviderState.READY]
+     */
     fun state(): ProviderState
 }

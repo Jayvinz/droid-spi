@@ -18,6 +18,7 @@ import org.gradle.api.Project
  */
 class SpiPlugin : Plugin<Project> {
 
+    /** Registers scan tasks for every variant and the generate task for application modules. */
     override fun apply(project: Project) {
         val extension = project.extensions.create("spi", SpiExtension::class.java)
         val androidComponents =

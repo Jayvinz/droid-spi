@@ -109,6 +109,7 @@ internal class ProviderRegistry internal constructor(
                 stateOf(service, key) ?: ProviderState.MISSING
         }
 
+    /** Returns the current state of `(service, key)`, or null when the pair is not registered. */
     fun stateOf(service: Class<*>, key: String): ProviderState? {
         if (key !in keysOf(service)) return null
         if (Slot(service, key) in dead) return ProviderState.DEAD
@@ -133,6 +134,7 @@ internal class ProviderRegistry internal constructor(
             }
             .sortedWith(compareBy({ it.first }, { it.second }))
 
+    /** Instantiates the provider, applying the DEAD and retry rules. */
     @Suppress("UNCHECKED_CAST")
     private fun <T : Any> instantiate(service: Class<T>, key: String): T? {
         val slot = Slot(service, key)

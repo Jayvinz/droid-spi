@@ -20,13 +20,16 @@ import org.gradle.api.tasks.TaskAction
 @CacheableTask
 abstract class ScanProvidersTask : DefaultTask() {
 
+    /** Source directories scanned for Kotlin/Java sources and META-INF/services text files. */
     @get:InputFiles
     @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val sourceDirs: ConfigurableFileCollection
 
+    /** Output manifest listing one `service \t provider \t key \t factory` line per entry. */
     @get:OutputFile
     abstract val manifestFile: RegularFileProperty
 
+    /** Scans the configured sources and writes a deterministic manifest. */
     @TaskAction
     fun run() {
         val files = sourceDirs.asFileTree

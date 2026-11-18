@@ -9,6 +9,7 @@ object Trace {
 
     private val format = SimpleDateFormat("HH:mm:ss.SSS", Locale.US)
 
+    /** Formats [message] with a timestamp and [tag]. */
     fun line(tag: String, message: String): String =
         "${format.format(Date())} [$tag] $message"
 }

@@ -22,6 +22,7 @@ import com.google.android.play.core.splitinstall.SplitInstallRequest
 import com.google.android.play.core.splitinstall.SplitInstallStateUpdatedListener
 import com.google.android.play.core.splitinstall.model.SplitInstallSessionStatus
 
+/** Demo screen: lists the provider table, exercises every lookup API, and drives the dynamic-module install flow. */
 class MainActivity : Activity() {
 
     private lateinit var output: TextView

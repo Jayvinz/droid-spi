@@ -22,6 +22,7 @@ internal object ConfigurationClassGenerator {
     private const val SUPER_NAME = "java/lang/Object"
     private const val CONFIGURATION = "top/jayvin/android/spi/ProviderConfiguration"
 
+    /** Generates the configuration class bytecode for [rawEntries]. */
     fun generate(pkg: String, simpleName: String, rawEntries: List<ProviderEntry>): ByteArray {
         val entries = rawEntries.sortedWith(compareBy({ it.service }, { it.key }))
         val owner = if (pkg.isEmpty()) simpleName else "${pkg.toInternalName()}/$simpleName"

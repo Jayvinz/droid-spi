@@ -23,19 +23,24 @@ import org.gradle.api.tasks.TaskAction
 @CacheableTask
 abstract class GenerateServiceConfigurationTask : DefaultTask() {
 
+    /** Manifests produced by every module's scan task. */
     @get:InputFiles
     @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val manifests: ConfigurableFileCollection
 
+    /** Package of the generated configuration class. */
     @get:Input
     abstract val packageName: Property<String>
 
+    /** Simple name of the generated configuration class. */
     @get:Input
     abstract val className: Property<String>
 
+    /** Directory receiving the generated class file. */
     @get:OutputDirectory
     abstract val outputDir: DirectoryProperty
 
+    /** Merges the manifests, validates `(service, key)` uniqueness, and writes the configuration class. */
     @TaskAction
     fun run() {
         val bySlot = LinkedHashMap<Pair<String, String>, ProviderEntry>()

@@ -21,6 +21,7 @@ internal object ServiceConfigScanner {
 
     private val CLASS_NAME = Regex("""^[\w.$]+$""")
 
+    /** Parses the given `META-INF/services` files into provider entries. */
     fun scan(files: Collection<File>): List<ProviderEntry> {
         val out = LinkedHashSet<ProviderEntry>()
 

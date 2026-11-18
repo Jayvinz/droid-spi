@@ -5,7 +5,7 @@ import org.gradle.api.file.RegularFile
 import org.gradle.api.provider.Provider
 
 /**
- * Consumers configure this in their module:
+ * Gradle DSL extension for the SPI plugin, registered as `spi { ... }` in consumer modules.
  *
  * ```kotlin
  * spi {
@@ -39,18 +39,19 @@ internal const val META_INF_SERVICES = "META-INF/services/"
 internal fun String.toInternalName(): String = replace('.', '/')
 
 /**
- * Collector mounted on the root project: each module registers its buildType-specific scan
- * task here, and the app module takes them all at `projectsEvaluated`.
+ * Internal root-project collector: each module registers its buildType-specific scan task here,
+ * and the app module takes them all at `projectsEvaluated`.
  *
  * The key is buildType rather than variant name because the provider configuration only needs
  * to aggregate per buildType: one table each for `debug` / `release`. The cost is that
  * flavor-exclusive services are not collected; multi-flavor projects must align per variant name.
  */
 abstract class SpiRootExtension {
-    /** buildType -> manifest files produced by each module's scan task */
+    /** Mapping from buildType to the manifest files produced by each module's scan task. */
     val manifests: MutableMap<String, MutableList<Provider<RegularFile>>> = LinkedHashMap()
 }
 
+/** Returns the root project's SPI collector, creating it on first use. */
 internal fun rootExtension(project: Project): SpiRootExtension {
     val root = project.rootProject
     return root.extensions.findByType(SpiRootExtension::class.java)

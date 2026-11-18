@@ -4,6 +4,7 @@ import com.example.core.api.HomeService
 import com.example.core.common.Trace
 import top.jayvin.android.spi.ServiceProvider
 
+/** Default [HomeService] implementation. */
 @ServiceProvider(service = HomeService::class)
 class HomeServiceImpl : HomeService {
 

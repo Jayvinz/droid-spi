@@ -12,6 +12,9 @@ import android.content.Context
  * the `CameraActivity` class name.
  */
 interface CameraService {
+    /** Returns a short description for the demo screen. */
     fun description(): String
+
+    /** Opens the camera page. */
     fun open(context: Context)
 }
