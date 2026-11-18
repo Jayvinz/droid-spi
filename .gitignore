@@ -1,0 +1,25 @@
+# Gradle
+.gradle/
+.kotlin/
+build/
+**/build/
+
+# Local SDK path (machine-specific)
+local.properties
+
+# Published local maven repo (regenerate with ./gradlew publish)
+local-repo/
+
+# IDE
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log

@@ -1,0 +1,3 @@
+# 模拟第三方库按 JDK SPI 约定声明 provider
+# 语法与 java.util.ServiceLoader 完全一致：一行一个实现类全限定名
+com.example.core.common.LegacyServiceImpl
