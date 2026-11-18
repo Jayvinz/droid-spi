@@ -1,7 +1,7 @@
 # Android SPI ServiceLoader · 设计方案（v2，已落地）
 
 > AAB 多模块工程下的编译期 provider 配置表。代码命名对齐 `java.util.ServiceLoader` 的 SPI 词汇。
-> 实现代码：`android-spi/`，示例工程：`android-spi/sample/`。
+> 实现代码：`android-spi/`，示例工程：`android-spi/`（`app/` + `modules/` 为 demo，三个 `spi-*` 为插件本体，单一 build）。
 > 核心特征：**零 `Class.forName`、零 APT/KSP、零第三方 jar 扫描、元数据类字面量化、安装完成自动 refresh**。
 
 ---
@@ -177,7 +177,7 @@ your-module/src/main/resources/META-INF/services/com.example.core.api.LegacyServ
 进入模块清单 → 聚合校验 → 生成 class 的 `providerOf` / `newProvider`。运行时无差别。
 
 前置条件：该模块必须 apply `top.jayvin.android.spi` 插件（否则没有 `xxScanProviders` 任务）。
-`sample/core-common` 就是只有 SPI 配置、没有注解的最小示例 —— 它的清单输出为：
+`modules/core-common` 就是只有 SPI 配置、没有注解的最小示例 —— 它的清单输出为：
 
 ```
 com.example.core.api.LegacyService  com.example.core.common.LegacyServiceImpl
@@ -445,10 +445,10 @@ WMRouter 的 `ServiceLoader.put()` 是 public static，可以手工接入动态�
 
 | 项 | 命令 / 结果 |
 |---|---|
-| 工具链编译 | `./gradlew :spi-gradle-plugin:compileKotlin` ✅ |
+| 工具链编译 | `./gradlew :spi-plugin:compileKotlin` ✅ |
 | 运行时单测 | `./gradlew :spi-runtime:testDebugUnitTest` → 6 passed（MISSING→READY、探测不实例化、READY 不重探、DEAD 不重试、未注册 key、stream/findFirst 行为） |
 | 示例 APK | `:app:assembleDebug` ✅，`aapt2 dump xmltree` 确认 `<provider>` 在包内 |
 | 示例 AAB | `:app:bundleDebug` ✅，`base` / `feature_camera` 分包 |
 | 生成字节码 | `javap -c` 确认：**无 `<clinit>`**、`providerOf` 只有 `ldc`、`newProvider` 对 `@ProviderFactory` 用 `INVOKESTATIC` |
 | 分包正确性 | `dexdump` 确认 `CameraServiceImpl` 只在 `feature_camera/dex`，base dex 只有引用 |
-| 标准 SPI 配置 | `sample/core-common` 的 `META-INF/services/...LegacyService` 被扫描进清单（`LegacyService → LegacyServiceImpl`），生成字节码含 `ldc LegacyServiceImpl` 与 `new LegacyServiceImpl`，`MainActivity` 调 `ServiceLoader.load(LegacyService::class.java)` 返回非空 |
+| 标准 SPI 配置 | `modules/core-common` 的 `META-INF/services/...LegacyService` 被扫描进清单（`LegacyService → LegacyServiceImpl`），生成字节码含 `ldc LegacyServiceImpl` 与 `new LegacyServiceImpl`，`MainActivity` 调 `ServiceLoader.load(LegacyService::class.java)` 返回非空 |

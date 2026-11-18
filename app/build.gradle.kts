@@ -16,7 +16,7 @@ android {
         versionName = "1.0"
     }
 
-    dynamicFeatures += setOf(":feature_camera")
+    dynamicFeatures += setOf(":modules:feature_camera")
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -44,10 +44,10 @@ spi {
 }
 
 dependencies {
-    implementation(project(":core-api"))
-    implementation(project(":core-common"))
-    implementation(project(":feature-home"))
-    implementation(project(":feature-account"))
+    implementation(project(":modules:core-api"))
+    implementation(project(":modules:core-common"))
+    implementation(project(":modules:feature-home"))
+    implementation(project(":modules:feature-account"))
 
     implementation("top.jayvin.android.spi:spi-annotation:1.0.0")
     // runtime 会传递 play-core（SplitInstallManager / SplitCompat）

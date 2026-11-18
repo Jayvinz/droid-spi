@@ -33,30 +33,32 @@ META-INF/services ─┘                                                       S
 ## 目录
 
 ```
-android-spi/
-├── spi-annotation/     @ServiceProvider / @ProviderFactory（纯 Java 注解，零依赖）
-├── spi-runtime/        ServiceLoader 门面 + provider 状态机 + 安装监听（Android Library）
-├── spi-gradle-plugin/  扫描与生成（Gradle Plugin，ASM 生成 class）
-├── local-repo/         publish 产物（本地 maven 仓库）
-└── sample/             多模块示例工程（独立 build，消费 local-repo）
-    ├── app/            接入方：manifest 一行 <provider> + 一个 spi{} 配置
-    ├── core-api/       service 接口层（所有 @ServiceProvider 的 service 都在这里）
-    ├── core-common/    普通常驻 library
-    ├── feature-home/   HomeService 默认 provider + vip 变体
-    ├── feature-account/ @ProviderFactory 私有构造 + guest 变体
-    └── feature_camera/ on-demand 动态模块：CameraService provider + 独立 Activity
+android-spi/                       单一 Gradle build，所有模块在 settings.gradle.kts 统一 include
+├── spi-annotation/                插件本体：@ServiceProvider / @ProviderFactory（纯 Java 注解，零依赖）
+├── spi-runtime/                   插件本体：ServiceLoader 门面 + provider 状态机 + 安装监听（Android Library）
+├── spi-plugin/                    插件本体：扫描与生成（Gradle Plugin，ASM 生成 class）
+├── app/                           demo 主模块（接入方）：manifest 一行 <provider> + 一个 spi{} 配置
+├── modules/                       demo 非主模块统一放在这里
+│   ├── core-api/                  service 接口层（所有 @ServiceProvider 的 service 都在这里）
+│   ├── core-common/               普通常驻 library（含 META-INF/services 示例）
+│   ├── feature-home/              HomeService 默认 provider + vip 变体
+│   ├── feature-account/           @ProviderFactory 私有构造 + guest 变体
+│   └── feature_camera/            on-demand 动态模块：CameraService provider + 独立 Activity
+├── docs/                          完整设计方案
+└── local-repo/                    publish 产物（本地 maven 仓库，被 gitignore）
 ```
+
+Gradle 模块路径与目录一一对应：`:app`、`:modules:core-api`、`:modules:feature_camera`、`:spi-plugin` 等。
 
 ## 快速开始
 
 ```bash
-# 1. 发布三个模块到本地 maven（local-repo/）
-./gradlew publish
+# 1. 发布三个插件模块到本地 maven（local-repo/）；demo 模块从同一仓库消费插件
+./gradlew :spi-annotation:publish :spi-runtime:publish :spi-plugin:publish
 
-# 2. 构建示例（独立工程，通过 local-repo 消费插件）
-cd sample
-../gradlew :app:assembleDebug      # APK
-../gradlew :app:bundleDebug        # AAB（含 feature_camera 分包）
+# 2. 构建 demo（同一 build 内）
+./gradlew :app:assembleDebug      # APK
+./gradlew :app:bundleDebug        # AAB（含 feature_camera 分包）
 ```
 
 跑测试：
@@ -69,10 +71,10 @@ cd sample
 
 ```bash
 # 配置类字节码：只有方法体引用实现类，没有 <clinit>
-javap -p -c sample/app/build/intermediates/classes/debug/DebugGenerateServiceConfiguration/top/jayvin/android/spi/generated/GeneratedServiceConfiguration.class
+javap -p -c app/build/intermediates/classes/debug/DebugGenerateServiceConfiguration/top/jayvin/android/spi/generated/GeneratedServiceConfiguration.class
 
 # 确认 provider 进了 APK、配置类进了 base dex
-"D:/Android/Sdk/build-tools/35.0.0/aapt2.exe" dump xmltree sample/app/build/outputs/apk/debug/app-debug.apk --file AndroidManifest.xml
+"D:/Android/Sdk/build-tools/35.0.0/aapt2.exe" dump xmltree app/build/outputs/apk/debug/app-debug.apk --file AndroidManifest.xml
 ```
 
 ## 接入三步
@@ -190,7 +192,7 @@ com.thirdparty.SomeOtherImpl   # 多个也支持
 - 两种声明指向**同一 provider 实现类**时按整行去重，不算冲突；不同实现类抢同一 `(service, key="")` 仍会构建报错。
 
 > 该模块必须 apply `top.jayvin.android.spi` 插件，否则没有 `xxScanProviders` 任务，配置不会被扫描。
-> `sample/core-common` 就是只有 SPI 配置、没有注解的最小示例。
+> `modules/core-common` 就是只有 SPI 配置、没有注解的最小示例。
 
 ## 动态模块安装后发生了什么
 
@@ -269,10 +271,10 @@ public final class GeneratedServiceConfiguration
 - **按 buildType 聚合**：`debug`/`release` 各一份，flavor 共享；多 flavor 需要改成按 variant 对齐。
 - **不支持嵌套类 / `typealias` 作为 service**：扫描器按顶层类型解析。
 - **非 Play 渠道**：`SplitInstallManagerFactory.create` 失败时框架退化为纯静态配置表（所有 provider 本来就打进包里，天然 READY），行为正确。
-- **R8**：base 会把未安装模块的类报 missing class，按模块名补 `-dontwarn`（`sample/app/proguard-rules.pro` 有示例）。
+- **R8**：base 会把未安装模块的类报 missing class，按模块名补 `-dontwarn`（`app/proguard-rules.pro` 有示例）。
 
 ## 环境
 
 - JDK 17、Gradle 8.9、AGP 8.7.3、Kotlin 2.0.21、compileSdk 35
-- 国内环境如需代理加速依赖下载，取消 `gradle.properties`（根目录与 `sample/` 各一份）里 clash 代理段的注释并按需改端口；默认已注释，不影响其他环境构建
+- 国内环境如需代理加速依赖下载，取消 `gradle.properties` 里 clash 代理段的注释并按需改端口；默认已注释，不影响其他环境构建
 - Gradle Wrapper 使用官方分发地址，首次构建需联网下载 Gradle 8.9

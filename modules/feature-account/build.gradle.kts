@@ -1,12 +1,11 @@
 plugins {
     id("com.android.library")
     id("org.jetbrains.kotlin.android")
-    // core-common 没有 @ServiceProvider 注解，但需要它来扫描 src/main/resources/META-INF/services
     id("top.jayvin.android.spi")
 }
 
 android {
-    namespace = "com.example.core.common"
+    namespace = "com.example.feature.account"
     compileSdk = 35
 
     defaultConfig {
@@ -24,5 +23,6 @@ android {
 }
 
 dependencies {
-    implementation(project(":core-api"))
+    implementation(project(":modules:core-api"))
+    implementation("top.jayvin.android.spi:spi-annotation:1.0.0")
 }

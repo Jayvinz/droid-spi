@@ -24,8 +24,8 @@ android {
 
 dependencies {
     implementation(project(":app"))
-    implementation(project(":core-api"))
-    implementation(project(":core-common"))
+    implementation(project(":modules:core-api"))
+    implementation(project(":modules:core-common"))
     implementation("top.jayvin.android.spi:spi-annotation:1.0.0")
     implementation("top.jayvin.android.spi:spi-runtime:1.0.0")
 }
