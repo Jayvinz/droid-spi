@@ -45,7 +45,6 @@ internal fun String.toInternalName(): String = replace('.', '/')
  * different sources and therefore contribute different providers.
  */
 internal data class SpiVariantEntry(
-    val variantName: String,
     val buildType: String?,
     /** Flavor dimensions in dimension order, `(dimension, value)`; empty when the module has no flavors. */
     val flavors: List<Pair<String, String>>,
@@ -53,7 +52,7 @@ internal data class SpiVariantEntry(
 ) {
     /**
      * Whether this module variant feeds the application variant identified by
-     * ([buildType], [flavors]).
+     * ([buildType], [applicationFlavors]).
      *
      * The build type must match. Every flavor dimension declared by **this module** must also
      * exist on the application variant with the same value; a module that declares no flavors
@@ -63,10 +62,9 @@ internal data class SpiVariantEntry(
      */
     fun isCompatibleWith(
         buildType: String?,
-        flavors: List<Pair<String, String>>,
+        applicationFlavors: Map<String, String>,
     ): Boolean {
         if (this.buildType != buildType) return false
-        val applicationFlavors = flavors.toMap()
         return this.flavors.all { (dimension, value) ->
             applicationFlavors[dimension] == value
         }
@@ -78,11 +76,8 @@ internal data class SpiVariantEntry(
  * the app module takes the compatible subset at `projectsEvaluated`.
  */
 internal abstract class SpiRootExtension {
-    /** Module path → its variant entries (one per variant the module declares). */
-    val variants: MutableMap<String, MutableList<SpiVariantEntry>> = LinkedHashMap()
-
     /** Every registered variant entry, across modules. */
-    internal fun allVariantEntries(): List<SpiVariantEntry> = variants.values.flatten()
+    val entries: MutableList<SpiVariantEntry> = mutableListOf()
 }
 
 /** Returns the root project's SPI collector, creating it on first use. */

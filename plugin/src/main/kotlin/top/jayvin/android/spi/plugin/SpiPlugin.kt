@@ -6,6 +6,7 @@ import com.android.build.api.variant.ScopedArtifacts
 import com.android.build.api.variant.Variant
 import org.gradle.api.Plugin
 import org.gradle.api.Project
+import org.gradle.api.tasks.TaskProvider
 
 /**
  * The `top.jayvin.android.spi` plugin.
@@ -22,29 +23,58 @@ import org.gradle.api.Project
  */
 class SpiPlugin : Plugin<Project> {
 
+    /** An application variant waiting for every module's variant entries at `projectsEvaluated`. */
+    private class PendingGeneration(
+        val task: TaskProvider<GenerateServiceConfigurationTask>,
+        val buildType: String?,
+        val flavors: Map<String, String>,
+    )
+
     /** Registers a scan task for every variant and a generate task for application variants. */
     override fun apply(project: Project) {
         val extension = project.extensions.create("spi", SpiExtension::class.java)
         val androidComponents =
             project.extensions.getByType(AndroidComponentsExtension::class.java)
         val isApplication = project.plugins.hasPlugin("com.android.application")
+        val rootExtension = rootExtension(project)
+        val pending = mutableListOf<PendingGeneration>()
 
         androidComponents.onVariants(androidComponents.selector().all()) { variant ->
             if (!extension.enabled) return@onVariants
 
-            registerScan(project, variant, extension)
+            registerScan(project, variant, extension, rootExtension)
 
             if (isApplication) {
-                registerGenerate(project, variant)
+                pending += PendingGeneration(
+                    task = registerGenerate(project, variant),
+                    buildType = variant.buildType,
+                    flavors = variant.productFlavors.toMap(),
+                )
+            }
+        }
+
+        // One hook for every application variant: the `onVariants` callbacks above run during
+        // project evaluation, so their entries are complete by the time this fires. Wiring here
+        // avoids configuration-time cross-project evaluation order issues, and each manifest
+        // Provider carries its producer dependency, so the scan → generate edge is implicit.
+        project.gradle.projectsEvaluated {
+            val entries = rootExtension.entries
+            pending.forEach { generation ->
+                val manifests = entries
+                    .filter { it.isCompatibleWith(generation.buildType, generation.flavors) }
+                    .map { it.manifest }
+                generation.task.configure { t -> t.manifests.from(*manifests.toTypedArray()) }
             }
         }
     }
 
-    private fun registerScan(project: Project, variant: Variant, extension: SpiExtension) {
+    private fun registerScan(
+        project: Project,
+        variant: Variant,
+        extension: SpiExtension,
+        rootExtension: SpiRootExtension,
+    ) {
         val variantName = variant.name
-        val manifest = project.layout.buildDirectory.file(
-            "generated/spi/$variantName/services.txt"
-        )
 
         val task = project.tasks.register(
             "${variantName.capitalized()}ScanProviders",
@@ -61,22 +91,20 @@ class SpiPlugin : Plugin<Project> {
             if (extension.scanMetaInfServices) {
                 variant.sources.resources?.let { res -> t.sourceDirs.from(res.static) }
             }
-            t.manifestFile.set(manifest)
+            t.manifestFile.set(project.spiVariantDir(variantName).map { it.file("services.txt") })
         }
 
-        rootExtension(project).variants
-            .getOrPut(project.path) { mutableListOf() }
-            .add(
-                SpiVariantEntry(
-                    variantName = variantName,
-                    buildType = variant.buildType,
-                    flavors = variant.productFlavors,
-                    manifest = task.flatMap { it.manifestFile },
-                )
-            )
+        rootExtension.entries += SpiVariantEntry(
+            buildType = variant.buildType,
+            flavors = variant.productFlavors,
+            manifest = task.flatMap { it.manifestFile },
+        )
     }
 
-    private fun registerGenerate(project: Project, variant: Variant) {
+    private fun registerGenerate(
+        project: Project,
+        variant: Variant,
+    ): TaskProvider<GenerateServiceConfigurationTask> {
         val variantName = variant.name
         val task = project.tasks.register(
             "${variantName.capitalized()}GenerateServiceConfiguration",
@@ -87,7 +115,7 @@ class SpiPlugin : Plugin<Project> {
                 "Aggregates compatible modules' $variantName manifests and generates the service configuration class"
             t.packageName.set(GENERATED_PACKAGE)
             t.className.set(GENERATED_CLASS_NAME)
-            t.outputDir.set(project.layout.buildDirectory.dir("generated/spi/$variantName/classes"))
+            t.outputDir.set(project.spiVariantDir(variantName).map { it.dir("classes") })
         }
 
         // Every variant needs its own append. Flavors make several variants share a build type;
@@ -96,22 +124,12 @@ class SpiPlugin : Plugin<Project> {
             .use(task)
             .toAppend(ScopedArtifact.CLASSES) { t -> t.outputDir }
 
-        val buildType = variant.buildType
-        val flavors = variant.productFlavors
-
-        // Configuration-time cross-project collection runs into evaluation order; wire inputs
-        // only after every project is configured. Providers carry their producer dependency,
-        // so the task graph creates the scan → generate edge automatically.
-        project.gradle.projectsEvaluated {
-            val manifests = rootExtension(project)
-                .allVariantEntries()
-                .filter { it.isCompatibleWith(buildType, flavors) }
-                .map { it.manifest }
-            task.configure { t ->
-                t.manifests.from(*manifests.toTypedArray())
-            }
-        }
+        return task
     }
+
+    /** Base output directory for one variant's manifest and generated class. */
+    private fun Project.spiVariantDir(variantName: String) =
+        layout.buildDirectory.dir("generated/spi/$variantName")
 
     private fun String.capitalized(): String =
         replaceFirstChar { if (it.isLowerCase()) it.titlecaseChar() else it }

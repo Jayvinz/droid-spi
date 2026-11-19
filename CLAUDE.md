@@ -83,8 +83,8 @@ Single Gradle build; `settings.gradle.kts` includes everything:
 2. **Application modules only** register `{variantName}GenerateServiceConfiguration` per variant.
    It reads the manifests of every compatible module variant, validates `(service, key)`
    uniqueness (a duplicate fails the build), and generates the class with ASM.
-3. Each module registers its variant entries in the root project's `spiRoot` extension
-   (module path → variant name, buildType, flavor dimensions, manifest). After
+3. Each module registers its per-variant entries (buildType, flavor dimensions, manifest) in
+   the root project's `spiRoot` extension as a flat list. After
    `projectsEvaluated` the generate task takes the entries whose buildType matches and whose
    flavor dimensions all match the application variant (a module without flavors matches every
    application flavor). The generate task outputs bytecode via `toAppend(ScopedArtifact.CLASSES)`
