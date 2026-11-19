@@ -125,10 +125,9 @@ dependencies {
 }
 ```
 
-The artifacts are published to GitHub Packages; the repository is
-[Garenzhou/android-spi](https://github.com/Garenzhou/android-spi). The README contains the
-`pluginManagement` / `dependencyResolutionManagement` snippet, including the token requirement
-(GitHub Packages authenticates reads even for public artifacts).
+The plugin is published to the Gradle Plugin Portal and the libraries to Maven Central, so the
+standard repositories are enough. Source repository:
+[Garenzhou/android-spi](https://github.com/Garenzhou/android-spi).
 
 Requirements: JDK 17, AGP 8.x, `minSdk 24`.
 

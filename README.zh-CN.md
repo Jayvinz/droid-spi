@@ -16,17 +16,13 @@ English: [README](README.md)
 
 ## 接入
 
+插件发布在 **Gradle Plugin Portal**，库发布在 **Maven Central**，使用标准仓库即可，不需要额外
+配置仓库或 token。
+
 ```kotlin
 // settings.gradle.kts
 pluginManagement {
     repositories {
-        maven {
-            url = uri("https://maven.pkg.github.com/Garenzhou/android-spi")
-            credentials {
-                username = providers.gradleProperty("gpr.user").orNull ?: System.getenv("GITHUB_ACTOR")
-                password = providers.gradleProperty("gpr.key").orNull ?: System.getenv("GITHUB_TOKEN")
-            }
-        }
         gradlePluginPortal()
         google()
         mavenCentral()
@@ -34,22 +30,11 @@ pluginManagement {
 }
 dependencyResolutionManagement {
     repositories {
-        maven {
-            url = uri("https://maven.pkg.github.com/Garenzhou/android-spi")
-            credentials {
-                username = providers.gradleProperty("gpr.user").orNull ?: System.getenv("GITHUB_ACTOR")
-                password = providers.gradleProperty("gpr.key").orNull ?: System.getenv("GITHUB_TOKEN")
-            }
-        }
         google()
         mavenCentral()
     }
 }
 ```
-
-`gpr.user` 填 GitHub 用户名，`gpr.key` 填带 `read:packages` 权限的 token（GitHub Packages
-始终需要 token 认证）。这两个值放在**用户级** `~/.gradle/gradle.properties`，或直接导出
-`GITHUB_ACTOR` / `GITHUB_TOKEN` 环境变量，不要提交到仓库。
 
 ```kotlin
 // 模块 build.gradle.kts

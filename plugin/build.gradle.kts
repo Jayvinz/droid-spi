@@ -2,6 +2,7 @@ plugins {
     id("org.jetbrains.kotlin.jvm")
     id("java-gradle-plugin")
     id("maven-publish")
+    id("com.gradle.plugin-publish") version "2.2.1"
     id("framework-publishing")
 }
 
@@ -10,9 +11,10 @@ kotlin {
 }
 
 // The Gradle plugin publication is created from the java component, so this also attaches
-// plugin-<version>-sources.jar to pluginMaven.
+// plugin-<version>-sources.jar and plugin-<version>-javadoc.jar to pluginMaven.
 java {
     withSourcesJar()
+    withJavadocJar()
 }
 
 dependencies {
@@ -21,12 +23,20 @@ dependencies {
 }
 
 gradlePlugin {
+    website.set("https://github.com/Garenzhou/android-spi")
+    vcsUrl.set("https://github.com/Garenzhou/android-spi")
     plugins {
         create("spi") {
             id = "top.jayvin.droidspi"
             displayName = "droid-spi"
             description = "Compile-time SPI for Android: scans @ServiceProvider and generates a fixed-FQN provider configuration class"
             implementationClass = "top.jayvin.android.spi.plugin.SpiPlugin"
+            tags.set(listOf("android", "spi", "service-loader", "dynamic-features", "aab"))
         }
     }
+}
+
+// Production publishing is CI-only; a local `publishPlugins` is a no-op.
+tasks.matching { it.name == "publishPlugins" }.configureEach {
+    onlyIf { System.getenv("CI") == "true" }
 }

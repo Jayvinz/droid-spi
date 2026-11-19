@@ -41,11 +41,19 @@ dependencies {
     testImplementation("junit:junit:4.13.2")
 }
 
+// Maven Central requires a javadoc jar. AGP has no javadoc variant for Android libraries, so this
+// publishes the project README as documentation instead of an empty artifact.
+val javadocJar by tasks.registering(Jar::class) {
+    archiveClassifier.set("javadoc")
+    from(layout.projectDirectory.dir("..").file("README.md"))
+}
+
 afterEvaluate {
     publishing {
         publications {
             create<MavenPublication>("release") {
                 from(components["release"])
+                artifact(javadocJar)
             }
         }
     }

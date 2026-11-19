@@ -92,15 +92,24 @@ four-variant on-device self-check screen.
 `local-repo` (with `--configure-on-demand`), runs the runtime unit tests, assembles all four
 variants, and repeats the build with configuration cache and isolated projects.
 
+Production publishing is **CI-only**; the build itself has no production repository. A local
+`./gradlew publish` writes unsigned artifacts to `local-repo/` and nothing else.
+
 `.github/workflows/release.yml` runs on a `v*` tag. It verifies that the tag equals
-`v$spiVersion`, publishes `annotation` / `runtime` / `plugin` to GitHub Packages
-(`https://maven.pkg.github.com/Garenzhou/android-spi`) using the workflow `GITHUB_TOKEN`
-(`packages: write`), and attaches the jars/AAR to the GitHub Release. Local publishes are
-unaffected: the GitHub repository is added only when both `GITHUB_TOKEN` and
-`GITHUB_REPOSITORY` are set.
+`v$spiVersion`, checks the required secrets, and then:
+
+- publishes a signed bundle of `annotation` and `runtime` to **Maven Central** through the
+  Central Portal Publisher API (`publishingType=AUTOMATIC`), polling until `PUBLISHED`;
+- publishes the Gradle plugin to the **Gradle Plugin Portal** with `:plugin:publishPlugins`;
+- attaches the jars/AAR to the GitHub Release.
+
+Required repository secrets: `SONATYPE_USERNAME`, `SONATYPE_PASSWORD` (a Central Portal user
+token), `SIGNING_KEY` (ASCII-armored private key), `SIGNING_PASSWORD`,
+`GRADLE_PUBLISH_KEY`, `GRADLE_PUBLISH_SECRET`. The `framework-publishing` convention plugin
+enables signing only when `SIGNING_KEY` is present and disables signing tasks otherwise.
 
 To cut a release: bump `spiVersion` in `gradle.properties`, commit, create and push the tag
-(`git tag v1.0.0-alpha01 && git push origin v1.0.0-alpha01`).
+(`git tag v1.0.0-alpha02 && git push origin v1.0.0-alpha02`).
 
 ## Module layout
 

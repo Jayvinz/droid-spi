@@ -10,6 +10,8 @@ java {
     sourceCompatibility = JavaVersion.VERSION_17
     targetCompatibility = JavaVersion.VERSION_17
     withSourcesJar()
+    // Maven Central requires a javadoc jar for every artifact.
+    withJavadocJar()
 }
 
 publishing {

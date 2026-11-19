@@ -115,10 +115,8 @@ dependencies {
 }
 ```
 
-产物发布在 GitHub Packages，仓库地址是
-[Garenzhou/android-spi](https://github.com/Garenzhou/android-spi)。README 中包含
-`pluginManagement` / `dependencyResolutionManagement` 的配置片段，以及 token 要求
-（即使是公开产物，GitHub Packages 读取时也需要认证）。
+插件发布在 Gradle Plugin Portal，库发布在 Maven Central，使用标准仓库即可。源码仓库：
+[Garenzhou/android-spi](https://github.com/Garenzhou/android-spi)。
 
 环境要求：JDK 17、AGP 8.x、`minSdk 24`。
 

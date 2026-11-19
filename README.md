@@ -17,17 +17,13 @@ feature modules.
 
 ## Install
 
+The plugin is published to the **Gradle Plugin Portal** and the libraries to **Maven Central**,
+so the standard repositories are enough — no extra repository or token is required.
+
 ```kotlin
 // settings.gradle.kts
 pluginManagement {
     repositories {
-        maven {
-            url = uri("https://maven.pkg.github.com/Garenzhou/android-spi")
-            credentials {
-                username = providers.gradleProperty("gpr.user").orNull ?: System.getenv("GITHUB_ACTOR")
-                password = providers.gradleProperty("gpr.key").orNull ?: System.getenv("GITHUB_TOKEN")
-            }
-        }
         gradlePluginPortal()
         google()
         mavenCentral()
@@ -35,23 +31,11 @@ pluginManagement {
 }
 dependencyResolutionManagement {
     repositories {
-        maven {
-            url = uri("https://maven.pkg.github.com/Garenzhou/android-spi")
-            credentials {
-                username = providers.gradleProperty("gpr.user").orNull ?: System.getenv("GITHUB_ACTOR")
-                password = providers.gradleProperty("gpr.key").orNull ?: System.getenv("GITHUB_TOKEN")
-            }
-        }
         google()
         mavenCentral()
     }
 }
 ```
-
-`gpr.user` is your GitHub username and `gpr.key` a token with `read:packages` (GitHub Packages
-always requires authentication). Put both in your **user-level**
-`~/.gradle/gradle.properties`, or export `GITHUB_ACTOR` / `GITHUB_TOKEN` — never commit them to
-the repository.
 
 ```kotlin
 // module build.gradle.kts
