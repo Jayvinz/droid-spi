@@ -56,12 +56,12 @@ dependencyResolutionManagement {
 plugins {
     id("com.android.application")     // 也可以是 com.android.library / com.android.dynamic-feature
     id("org.jetbrains.kotlin.android")
-    id("top.jayvin.droidspi") version "1.0.0-alpha01"
+    id("top.jayvin.droidspi") version "1.0.0-alpha02"
 }
 
 dependencies {
-    implementation("top.jayvin.droidspi:annotation:1.0.0-alpha01")
-    implementation("top.jayvin.droidspi:runtime:1.0.0-alpha01")
+    implementation("top.jayvin.droidspi:annotation:1.0.0-alpha02")
+    implementation("top.jayvin.droidspi:runtime:1.0.0-alpha02")
 }
 ```
 

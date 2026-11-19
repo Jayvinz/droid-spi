@@ -9,6 +9,12 @@ kotlin {
     jvmToolchain(17)
 }
 
+// The Gradle plugin publication is created from the java component, so this also attaches
+// plugin-<version>-sources.jar to pluginMaven.
+java {
+    withSourcesJar()
+}
+
 dependencies {
     implementation("org.ow2.asm:asm:9.7")
     compileOnly("com.android.tools.build:gradle:8.7.3")
