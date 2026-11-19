@@ -83,8 +83,8 @@ object ServiceLoader {
     private object EmptyConfiguration : ProviderConfiguration {
         override fun services(): Array<Class<*>> = emptyArray()
         override fun keys(): Array<String> = emptyArray()
-        override fun providerOf(service: Class<*>, key: String): Class<*>? = null
-        override fun newProvider(service: Class<*>, key: String): Any? = null
+        override fun providerAt(index: Int): Class<*>? = null
+        override fun newProviderAt(index: Int): Any? = null
     }
 
     private const val TAG = "AndroidSpi"
@@ -117,6 +117,9 @@ object ServiceLoader {
      * The lookup probes on demand, so a provider that becomes visible later (for example, after
      * its dynamic module is installed) succeeds on the next call. Availability is a normal
      * state: this method returns null instead of throwing.
+     *
+     * When several implementations share the key (only possible for the default key), entries
+     * are tried in declaration order and the first available one is returned.
      *
      * @param service the service interface
      * @param key the variant label; [DEFAULT_KEY] means the default implementation
@@ -162,6 +165,8 @@ object ServiceLoader {
      * Returns a lazy sequence of every ready provider for [service], aligned with the JDK's
      * `stream()`.
      *
+     * Every entry is represented, including several implementations sharing the default key.
+     *
      * @param service the service interface
      * @return ready provider handles; empty when none are available
      */
@@ -189,6 +194,8 @@ object ServiceLoader {
      * Returns the provider class for `(service, key)` without instantiating it or triggering
      * its `<clinit>`.
      *
+     * For several default entries the first resolvable class is returned.
+     *
      * @param service the service interface
      * @param key the variant label; [DEFAULT_KEY] means the default implementation
      * @return the provider class, or null when unavailable
@@ -201,6 +208,9 @@ object ServiceLoader {
     // ── All ──────────────────────────────────────────────────────
     /**
      * Returns every available variant of [service] as a `key -> instance` map.
+     *
+     * The default key may have several implementations; this map keeps the first available one.
+     * Use [providers] or [loadAllClasses] to enumerate every entry.
      *
      * @param service the service interface
      * @return available variants keyed by variant label; empty when none are available
@@ -222,6 +232,9 @@ object ServiceLoader {
     // ── State queries ────────────────────────────────────────────
     /**
      * Returns the current [ProviderState] of `(service, key)`.
+     *
+     * Several default implementations are aggregated: any READY wins, then any MISSING; DEAD
+     * only when every matching entry is dead.
      *
      * @param service the service interface
      * @param key the variant label; [DEFAULT_KEY] means the default implementation

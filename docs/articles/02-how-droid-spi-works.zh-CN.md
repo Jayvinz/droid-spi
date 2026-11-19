@@ -62,14 +62,15 @@ key 为空表示默认实现；factory 为空表示"调用无参构造函数"。
 interface ProviderConfiguration {
     fun services(): Array<Class<*>>
     fun keys(): Array<String>
-    fun providerOf(service: Class<*>, key: String): Class<*>?
-    fun newProvider(service: Class<*>, key: String): Any?
+    fun providerAt(index: Int): Class<*>?
+    fun newProviderAt(index: Int): Any?
 }
 ```
 
-`services()` 与 `keys()` 必须**按下标对齐，每个条目一个元素**。如果 `HomeService` 有两个 key，
-接口就会出现两次。这听起来冗余，但正是它让运行时能够按 service 分组、按下标读取 key；如果启动时
-每个接口只返回一次，就会得到 `Broken provider configuration: services=X keys=Y`。
+`services()` 与 `keys()` 必须**按下标对齐，每个条目一个元素**，provider 方法也以下标寻址。
+如果 `HomeService` 有两个 key，接口就会出现两次；多个默认实现则各自以空 key 出现一次。下标寻址
+保证它们不会塌缩成一个——按 key 分派只能返回其中一个。如果启动时每个接口只返回一次，就会得到
+`Broken provider configuration: services=X keys=Y`。
 
 ### 禁止 `<clinit>` 的规则
 
@@ -100,7 +101,7 @@ ASM `ClassWriter` 的 `getCommonSuperClass` 也被强制返回 `java/lang/Object
 `ProviderRegistry` 在启动时刻意几乎什么都不做：
 
 - 不预扫描。构造注册表只是保存配置。
-- `load()` 直接调用 `newProvider()`。如果类不存在，`NoClassDefFoundError` 会被捕获并转换为
+- `load()` 遍历 `(service, key)` 的所有条目并直接调用 `newProviderAt()`，返回第一个可用的。如果类不存在，`NoClassDefFoundError` 会被捕获并转换为
   `null`；下一次调用会重试。这就是新安装的动态模块无需任何 refresh 就能工作的原因。
 - `MISSING` 从不缓存。`READY` 也不缓存；provider 按调用实例化，与 `ServiceLoader` 语义一致。
 - `DEAD` **会**被缓存：一旦某个 provider 的 `<clinit>` 抛出异常，JVM 已把该类标记为 erroneous，
@@ -128,7 +129,8 @@ ASM `ClassWriter` 的 `getCommonSuperClass` 也被强制返回 `java/lang/Object
 ## 取舍
 
 - **仅限编译期。** provider 必须对构建可见。运行时加载的插件不在范围内。
-- **每个 `(service, key)` 只能有一个 provider。** 冲突会让构建失败，而不是静默解析。
+- **显式 key 必须唯一。** 两个 provider 声明同一个非空 key 会让构建失败。空 key（默认实现）可以
+  有多个：`load()` 返回第一个可用的，`providers()` 枚举全部。
 - **接口必须位于 base。** 如果把 service 接口放在动态模块里，安装前整张表都无法解析。
 - **描述性，而非魔法。** 没有作用域、生命周期或构造函数注入。如果你的依赖图在构建期就已全部安装，
   请使用 Hilt 或 Dagger。`Droid-spi` 服务于依赖图中*不保证*存在于进程内的那部分。

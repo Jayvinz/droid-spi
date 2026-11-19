@@ -26,7 +26,7 @@ package top.jayvin.android.spi
 interface ProviderConfiguration {
 
     /**
-     * Returns all registered service interfaces.
+     * Returns every service interface known to the generated table.
      *
      * The array **must contain interfaces only**, and they must live in base / resident modules.
      *
@@ -37,33 +37,35 @@ interface ProviderConfiguration {
     /**
      * Returns the variant keys, one-to-one with [services].
      *
+     * An empty string means the default variant. The default key may appear more than once for
+     * the same service (several default implementations); any other key is unique per service.
+     *
      * @return the keys; an empty string means the default variant
      */
     fun keys(): Array<String>
 
     /**
-     * Resolves the provider class for `(service, key)` without initializing it.
+     * Resolves the provider class at [index] without initializing it.
      *
-     * Used to determine whether a provider is ready.
+     * [index] is the position in the [services] / [keys] arrays. Used to determine whether a
+     * provider is ready and to enumerate every entry, including multiple default providers.
      *
-     * @param service the service interface
-     * @param key the variant label; an empty string means the default variant
-     * @return the provider class, or null when the pair is not registered
+     * @param index the entry position
+     * @return the provider class, or null when [index] is out of range
      * @throws NoClassDefFoundError when the provider class exists in the table but is not
      *   visible to the current process (for example, its dynamic module is not installed)
      */
-    fun providerOf(service: Class<*>, key: String): Class<*>?
+    fun providerAt(index: Int): Class<*>?
 
     /**
-     * Resolves and instantiates the provider for `(service, key)` (using the
-     * `@ProviderFactory` static factory when present), triggering the provider's `<clinit>`.
+     * Instantiates the provider at [index] (using the `@ProviderFactory` static factory when
+     * present), triggering the provider's `<clinit>`.
      *
-     * @param service the service interface
-     * @param key the variant label; an empty string means the default variant
-     * @return a new provider instance, or null when the pair is not registered
+     * @param index the entry position
+     * @return a new provider instance, or null when [index] is out of range
      * @throws ExceptionInInitializerError when the provider's `<clinit>` fails (irreversible
      *   in this process)
      * @throws NoClassDefFoundError when the provider class is not visible to the current process
      */
-    fun newProvider(service: Class<*>, key: String): Any?
+    fun newProviderAt(index: Int): Any?
 }

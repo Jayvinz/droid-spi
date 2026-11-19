@@ -23,8 +23,10 @@ import java.lang.annotation.Target;
  * <p>Constraints:
  * <ul>
  *   <li>service must be an interface and must live in base / resident library modules;</li>
- *   <li>there may be only one provider per (service, key) globally; duplicates fail the build;</li>
- *   <li>an interface may have at most one provider with an empty key (the default implementation).</li>
+ *   <li>a non-empty {@link #key()} is unique per service globally; duplicates fail the build;</li>
+ *   <li>the empty key (the default implementation) may have several providers: {@code load}
+ *       returns the first available one, while {@code providers} / {@code stream} enumerate all
+ *       of them.</li>
  * </ul>
  */
 @Target(ElementType.TYPE)

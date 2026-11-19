@@ -47,8 +47,9 @@ from it and stays `top.jayvin.android.spi`):
 ./gradlew :app:assembleFreeDebug :app:assemblePaidDebug :app:assembleFreeRelease :app:assemblePaidRelease
 ./gradlew :app:bundleFreeDebug     # demo AAB (includes the feature_camera split)
 
-# Runtime unit tests (all)
+# Runtime unit tests (all) and the plugin's merge-validation tests
 ./gradlew :runtime:testDebugUnitTest
+./gradlew :plugin:test
 # A single test class / a single test method
 ./gradlew :runtime:testDebugUnitTest --tests "top.jayvin.android.spi.ProviderRegistryTest"
 ./gradlew :runtime:testDebugUnitTest --tests "top.jayvin.android.spi.ProviderRegistryTest.missing until installed, load succeeds without refresh"
@@ -109,7 +110,7 @@ token), `SIGNING_KEY` (ASCII-armored private key), `SIGNING_PASSWORD`,
 enables signing only when `SIGNING_KEY` is present and disables signing tasks otherwise.
 
 To cut a release: bump `spiVersion` in `gradle.properties`, commit, create and push the tag
-(`git tag v1.0.0-alpha02 && git push origin v1.0.0-alpha02`).
+(`git tag v1.0.0-alpha03 && git push origin v1.0.0-alpha03`).
 
 ## Module layout
 
@@ -137,8 +138,9 @@ Single Gradle build; `settings.gradle.kts` includes everything:
    are scanned. Output is `build/generated/spi/{variantName}/services.txt`.
    Manifest format: `service \t provider \t key \t factory` (an empty key means the default variant).
 2. **Application modules only** register `{variantName}GenerateServiceConfiguration` per variant.
-   It reads the manifests of every compatible module variant, validates `(service, key)`
-   uniqueness (a duplicate fails the build), and generates the class with ASM.
+   It reads the manifests of every compatible module variant, validates non-empty key uniqueness
+   (duplicates fail the build), merges duplicated default-key implementations, and generates the
+   class with ASM.
 3. Manifests travel through Gradle's variant-aware artifact resolution, not a cross-project
    collector. Each module variant publishes its `services.txt` as a `spi-manifest`-typed artifact
    on `{variant}RuntimeElements`; the app's generate task takes an artifact view of
@@ -168,14 +170,19 @@ If the class is missing (app did not apply the plugin), the exception is caught,
 an empty configuration is used.
 `ProviderRegistry` does not pre-scan and does not cache `MISSING`:
 
-- `load()` calls `newProvider()` directly; when the class is absent it throws
+- The table is index-addressable: `providerAt(index)` / `newProviderAt(index)` align with
+  `services()` / `keys()`. That is what lets the default key own several implementations.
+- `load()` iterates the entries of `(service, key)` and calls `newProviderAt()` for each;
+  when the class is absent it throws
   `NoClassDefFoundError`, which is caught and turned into `null`, retried on the next call.
   So a newly installed module works on the next `load()`; there is no `refresh()`.
-- Only `DEAD` is cached (`<clinit>` failure; the JVM has already marked the class erroneous,
-  which is irreversible). `stateOf()` probes on demand and returns `READY` / `MISSING` / `DEAD`.
+- Only `DEAD` is cached, per entry index (`<clinit>` failure; the JVM has already marked the
+  class erroneous, which is irreversible). `stateOf()` probes on demand and returns `READY` /
+  `MISSING` / `DEAD`; for several default entries the states are aggregated (any READY wins).
 - `load()` returns `null` when unavailable (it never throws). The default key is the empty
-  string (`ServiceLoader.DEFAULT_KEY`); if the default key is absent and the service has
-  exactly one available provider, that provider is used as a fallback.
+  string (`ServiceLoader.DEFAULT_KEY`); with several default implementations it returns the first
+  available one. If the default key has nothing available and the service has exactly one
+  available non-default key, that provider is used as a fallback.
 - The `ServiceLoader` facade never throws: before `initialize()` it logs a warning once, and a
   missing / invalid `ServiceConfiguration` is logged as an error; both degrade to `null` / an
   empty collection.
@@ -204,8 +211,9 @@ These are correctness red lines, not style preferences:
 6. The default variant key is the empty string (`ServiceLoader.DEFAULT_KEY == ""`); the key
    parameter is non-null throughout.
 7. **`services()` and `keys()` are index-aligned, one element per entry**: a service with N keys
-   appears N times in `services()`. `ProviderRegistry` groups by service and reads keys by index.
-   Emitting each distinct interface once breaks startup with
+   appears N times in `services()`, and each default implementation appears once with an empty
+   key. `ProviderRegistry` reads entries by index (`providerAt` / `newProviderAt`) and groups by
+   service. Emitting each distinct interface once breaks startup with
    `Broken provider configuration: services=X keys=Y` (the runtime unit test's fake configuration
    deliberately returns the interface twice per key and documents the expected shape).
 
@@ -219,8 +227,9 @@ These are correctness red lines, not style preferences:
 - Provider names in `META-INF/services` files must look like `com.foo.BarImpl` (dot-separated
   FQN), otherwise the build fails.
 - An annotation and an SPI config entry pointing at the same implementation are deduplicated
-  by identical line; different implementations competing for the same `(service, key)` fail
-  the build.
+  by identical line; an explicit key (`key != ""`) must be unique per service, so two
+  implementations competing for it fail the build. The empty (default) key may have several
+  distinct implementations.
 
 ## Known pitfalls
 

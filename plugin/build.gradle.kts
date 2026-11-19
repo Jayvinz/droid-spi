@@ -20,6 +20,7 @@ java {
 dependencies {
     implementation("org.ow2.asm:asm:9.7")
     compileOnly("com.android.tools.build:gradle:8.7.3")
+    testImplementation("junit:junit:4.13.2")
 }
 
 gradlePlugin {

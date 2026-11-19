@@ -74,15 +74,16 @@ The generator emits a class with a fixed fully-qualified name,
 interface ProviderConfiguration {
     fun services(): Array<Class<*>>
     fun keys(): Array<String>
-    fun providerOf(service: Class<*>, key: String): Class<*>?
-    fun newProvider(service: Class<*>, key: String): Any?
+    fun providerAt(index: Int): Class<*>?
+    fun newProviderAt(index: Int): Any?
 }
 ```
 
-`services()` and `keys()` must be **index-aligned, one element per entry**. If `HomeService` has
-two keys, the interface appears twice. That sounds redundant, but it is what lets the runtime
-group by service and read keys by index; returning each interface once at startup produces
-`Broken provider configuration: services=X keys=Y`.
+`services()` and `keys()` must be **index-aligned, one element per entry**, and the provider
+methods take that index. If `HomeService` has two keys, the interface appears twice; several
+default implementations each appear once with an empty key. Index addressing is what keeps them
+from collapsing: key-based dispatch could only ever return one of them. Returning each interface
+once at startup produces `Broken provider configuration: services=X keys=Y`.
 
 ### The no-`<clinit>` rule
 
@@ -118,7 +119,8 @@ return-type requirements are not validated at build time, and a violation fails 
 `ProviderRegistry` deliberately does almost nothing at startup:
 
 - No pre-scan. Constructing the registry just stores the configuration.
-- `load()` calls `newProvider()` directly. If the class is absent, `NoClassDefFoundError` is
+- `load()` calls `newProviderAt()` directly for every entry of `(service, key)`, returning the
+  first one that works. If the class is absent, `NoClassDefFoundError` is
   caught and converted to `null`; the next call retries. That is why a newly installed dynamic
   module works without any refresh.
 - `MISSING` is never cached. `READY` is not cached either; providers are instantiated per call,
@@ -151,7 +153,9 @@ runtime.
 
 - **Compile-time only.** Providers must be visible to the build. Runtime-loaded plugins are out
   of scope.
-- **One provider per `(service, key)`.** Conflicts fail the build rather than resolving silently.
+- **Explicit keys are unique.** Two providers declaring the same non-empty key fail the build.
+  The default key may have several implementations; `load()` returns the first available and
+  `providers()` enumerates them all.
 - **Interfaces must live in base.** A service interface in a dynamic module would make the table
   unresolvable before installation.
 - **Descriptive, not magical.** There is no scope, lifecycle, or constructor injection. If your

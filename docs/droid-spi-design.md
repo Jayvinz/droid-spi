@@ -211,12 +211,12 @@ the path after `META-INF/services/`). Constraints and mapping:
 | Scope | Reads only these text files; **does not unzip jars / aars, does not scan classes**, preserving C3 |
 | `key` | Standard SPI has no such concept → `""` (default variant) |
 | Instantiation | No factory → no-arg constructor; **the implementation must have a public no-arg constructor** |
-| Dedup | Same provider declared by an annotation and by SPI config (identical line) is deduplicated; different implementations competing for the same `(service, key)` fail in the aggregation task |
+| Dedup | Same provider declared by an annotation and by SPI config (identical line) is deduplicated; different implementations competing for the same **non-empty** key fail in the aggregation task (the empty key may have several implementations) |
 | Validity | A provider name not matching `^[\w.$]+$` fails the build with the file name and line content |
 
 Each config entry maps to `ProviderEntry(service, provider, "", "")` and then follows exactly
 the same path as annotation entries: module manifest → aggregation validation → generated
-`providerOf` / `newProvider`. Runtime behavior is identical.
+`providerAt` / `newProviderAt`. Runtime behavior is identical.
 
 Prerequisite: the module must apply the `top.jayvin.droidspi` plugin (otherwise there is no
 `{variantName}ScanProviders` task). `modules/core-common` is the minimal example with SPI config only and
@@ -253,9 +253,10 @@ collector:
   and simply contributes no providers — there is no requirement to apply the plugin to features
   that do not declare any.
 
-`GenerateServiceConfigurationTask` runs per application variant, validates that `(service, key)`
-is globally unique (a conflict fails the build and lists both providers), then generates the
-`ServiceConfiguration` bytecode and appends it to that variant's `ScopedArtifact.CLASSES`.
+`GenerateServiceConfigurationTask` runs per application variant, validates that every **non-empty**
+key is unique per service (a conflict fails the build and lists both providers; the empty key may
+have several implementations), then generates the `ServiceConfiguration` bytecode and appends it
+to that variant's `ScopedArtifact.CLASSES`.
 Because the manifests are ordinary task-output artifacts, Gradle owns the scan → generate edges;
 they survive configuration-cache reuse and isolated projects. Passing them as cross-project
 `Provider`s or through a root-project extension would instead degrade to plain files during
@@ -269,12 +270,10 @@ restore them from the build cache on clean builds.
 **① No `<clinit>`.** All class literals appear only inside method bodies:
 
 ```java
-public Class providerOf(Class service, String key) {
-    if (service == HomeService.class) {
-        if (key.equals(""))    return HomeServiceImpl.class;   // ldc resolves only here
-        if (key.equals("vip")) return VipHomeServiceImpl.class;
-        ...
-    }
+public Class providerAt(int index) {
+    if (index == 0) return HomeServiceImpl.class;   // ldc resolves only here
+    if (index == 1) return VipHomeServiceImpl.class;
+    ...
     return null;
 }
 ```
@@ -284,8 +283,10 @@ erroneous, and even after the module is installed it would forever be
 `Could not initialize class` — the whole table is lost irreversibly.
 
 **② `services()` contains interfaces only, one element per entry.** It is index-aligned with
-`keys()`: a service with N keys appears N times (`ProviderRegistry` groups by service and reads
-keys by index). Interfaces are by convention pulled down into base and are always resolvable.
+`keys()`: a service with N keys appears N times, and every default implementation appears once
+with an empty key. `ProviderRegistry` reads entries by index, which is what allows the default
+key to own several providers. Interfaces are by convention pulled down into base and are always
+resolvable.
 
 **③ `@ProviderFactory` generates `INVOKESTATIC`**, not `Method.invoke`:
 
@@ -335,14 +336,17 @@ another project's model, so isolated projects stays clean.
 interface ProviderConfiguration {
     fun services(): Array<Class<*>>
     fun keys(): Array<String>
-    fun providerOf(service: Class<*>, key: String): Class<*>?   // resolve only, does not trigger <clinit>
-    fun newProvider(service: Class<*>, key: String): Any?         // resolve + instantiate
+    fun providerAt(index: Int): Class<*>?   // resolve only, does not trigger <clinit>
+    fun newProviderAt(index: Int): Any?     // resolve + instantiate
 }
 ```
 
-Splitting "is the class present" from "can the class initialize" into two methods is the
-prerequisite for the whole design to distinguish `MISSING` (module not installed, retryable)
-from `DEAD` (`<clinit>` failed, irreversible).
+Entries are addressed by index into the `services()` / `keys()` arrays rather than by
+`(service, key)`. Splitting "is the class present" from "can the class initialize" into two
+methods is the prerequisite for the whole design to distinguish `MISSING` (module not installed,
+retryable) from `DEAD` (`<clinit>` failed, irreversible). Index addressing additionally allows
+the empty key to own several implementations: enumeration visits every index, while key-based
+lookups take the first available entry.
 
 ### 4.2 On-demand probing and the DEAD cache
 
@@ -353,30 +357,34 @@ There is no pre-scan and no caching of `MISSING`; `ProviderState` is merely the 
 
 | State | Meaning | Entered when |
 |---|---|---|
-| `MISSING` | Provider class is currently invisible | `providerOf` throws (for example `NoClassDefFoundError`) or returns null |
-| `READY` | Provider class is resolvable | `providerOf` returns non-null |
-| `DEAD` | Unavailable and retrying is pointless | `newProvider` throws `ExceptionInInitializerError`, or the message contains `Could not initialize class` |
+| `MISSING` | Provider class is currently invisible | `providerAt` throws (for example `NoClassDefFoundError`) or returns null |
+| `READY` | Provider class is resolvable | `providerAt` returns non-null |
+| `DEAD` | Unavailable and retrying is pointless | `newProviderAt` throws `ExceptionInInitializerError`, or the message contains `Could not initialize class` |
 
-`load()` calls `newProvider()` directly:
+For a key with several default implementations the states are aggregated: any `READY` wins, then
+any `MISSING`; only an all-`DEAD` group reports `DEAD`.
 
-- Success → return the instance;
-- `NoClassDefFoundError` (module not installed) → return null, **not cached**, retry on the
-  next call;
-- `<clinit>` failure → add to the `dead` set and stop trying for this process;
-- Any other throwable from the factory (a business exception) → return null, not cached, so
-  the next call retries.
+`load()` walks every entry of `(service, key)` and calls `newProviderAt()` directly:
+
+- Success → return the instance (the first available entry wins);
+- `NoClassDefFoundError` (module not installed) → close that entry for this call, **not cached**,
+  try the next entry and retry the whole lookup on the next call;
+- `<clinit>` failure → add that entry index to the `dead` set and stop trying it for this process;
+- Any other throwable from the factory (a business exception) → not cached, so the next call
+  retries.
 
 So there is no `refresh()` and no window where "it is installed but the table is stale": after
 a module is installed, the next `load()` succeeds naturally.
 `DEAD` is the only state worth remembering, to avoid repeatedly triggering the same
 initialization failure.
 
-When `newProvider` throws `Failed resolution of` (module uninstalled), it is likewise not cached
-and is retried next time.
+When `newProviderAt` throws `Failed resolution of` (module uninstalled), it is likewise not
+cached and is retried next time.
 
 `loadClass()` and `stateOf()` report resolution failures as `MISSING` and never record `DEAD`:
-`DEAD` is only recorded by `load()` / `newProvider()` actually initializing a provider, which
-is when an erroneous `<clinit>` becomes observable.
+`DEAD` is only recorded by `load()` / `newProviderAt()` actually initializing a provider, which
+is when an erroneous `<clinit>` becomes observable. `DEAD` is tracked per entry index, not per
+key, because several default entries can share the empty key.
 
 ### 4.3 Initialization entry: the compileOnly placeholder class
 
@@ -490,9 +498,10 @@ for (Provider<HomeService> p : ServiceLoader.providers(HomeService.class)) {
 
 Kotlin keeps the inline `load<HomeService>()` form and the `Sequence` from `stream()`.
 
-`load(service)` has one fallback: when no key is specified (empty string) and the interface has
-exactly one available variant, use it directly, so single-implementation interfaces do not need
-a key.
+`load(service)` has one fallback: when no key is specified (empty string), no default entry is
+available, and the interface has exactly one available non-default key, use it directly, so
+single-implementation interfaces do not need a key. Several default implementations are tried in
+declaration order instead.
 
 **Deliberately not provided**:
 
@@ -508,7 +517,7 @@ a key.
 ## 5. Key JVM semantics (whether the design holds)
 
 **① `ldc X.class` only resolves; it does not initialize.**
-So `providerOf` naturally splits "is the class in the dex" from "can the class initialize".
+So `providerAt` naturally splits "is the class in the dex" from "can the class initialize".
 
 **② Class initialization failure is one-shot.**
 After `<clinit>` throws, the class is marked erroneous, and any later access is
@@ -580,7 +589,7 @@ but its table stores `Class` literals and initializes once (`mHasInit`); once an
 | Configuration cache | Store + reuse verified; source changes under `--configuration-cache` still rerun scan/generate; all four variants build in one invocation; `:app:bundleFreeDebug` succeeds |
 | Isolated projects | `-Dorg.gradle.unsafe.isolated-projects=true` passes store/reuse, added/removed providers, all four variants, and AAB builds under the same configuration cache |
 | Dynamic feature without plugin | Removing the plugin from a `dynamicFeatures` project still builds (standard and isolated modes); the table simply contains no provider from that feature, and restoring the plugin adds it back |
-| Generated bytecode | `javap -c` confirms: **no `<clinit>`**, `providerOf` only uses `ldc`, `newProvider` uses `INVOKESTATIC` for `@ProviderFactory`; `services()` / `keys()` are index-aligned (8 entries in debug, 7 in release) |
+| Generated bytecode | `javap -c` confirms: **no `<clinit>`**, `providerAt` only uses `ldc`, `newProviderAt` uses `INVOKESTATIC` for `@ProviderFactory`; `services()` / `keys()` are index-aligned (8 entries in debug, 7 in release) |
 | Split correctness | `dexdump` confirms `CameraServiceImpl` only exists in `feature_camera/dex`; base dex only has references |
 | Standard SPI config | `modules/core-common`'s `META-INF/services/...LegacyService` is scanned into the manifest (`LegacyService → LegacyServiceImpl`); generated bytecode contains `ldc LegacyServiceImpl` and `new LegacyServiceImpl`; `MainActivity` calls `ServiceLoader.load(LegacyService::class.java)` and gets a non-null instance |
 

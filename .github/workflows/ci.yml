@@ -35,7 +35,7 @@ jobs:
         run: ./gradlew :annotation:publish :runtime:publish :plugin:publish --configure-on-demand
 
       - name: Unit tests
-        run: ./gradlew :runtime:testDebugUnitTest
+        run: ./gradlew :plugin:test :runtime:testDebugUnitTest
 
       - name: Assemble every variant
         run: ./gradlew :app:assembleFreeDebug :app:assemblePaidDebug :app:assembleFreeRelease :app:assemblePaidRelease

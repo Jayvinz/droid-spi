@@ -2,7 +2,6 @@ package top.jayvin.android.spi.plugin
 
 import org.objectweb.asm.ClassWriter
 import org.objectweb.asm.Label
-import org.objectweb.asm.MethodVisitor
 import org.objectweb.asm.Opcodes
 import org.objectweb.asm.Type
 
@@ -26,7 +25,6 @@ internal object ConfigurationClassGenerator {
     fun generate(pkg: String, simpleName: String, rawEntries: List<ProviderEntry>): ByteArray {
         val entries = rawEntries.sortedWith(compareBy({ it.service }, { it.key }))
         val owner = if (pkg.isEmpty()) simpleName else "${pkg.toInternalName()}/$simpleName"
-        val grouped = entries.groupBy { it.service }
 
         val cw = object : ClassWriter(COMPUTE_FRAMES or COMPUTE_MAXS) {
             // Implementations may come from uninstalled dynamic modules; they must not be loaded here.
@@ -44,11 +42,12 @@ internal object ConfigurationClassGenerator {
 
         emitConstructor(cw)
         // services() and keys() are one-to-one per entry: an interface with two keys appears
-        // twice in services(). ProviderRegistry groups by service and reads keys by index.
+        // twice in services(), and several default implementations appear with an empty key
+        // each. ProviderRegistry enumerates entries by index.
         emitServices(cw, entries.map { it.service })
         emitKeys(cw, entries.map { it.key })
-        emitProviderOf(cw, grouped)
-        emitNewProvider(cw, grouped)
+        emitProviderAt(cw, entries)
+        emitNewProviderAt(cw, entries)
         cw.visitEnd()
 
         return cw.toByteArray()
@@ -95,38 +94,50 @@ internal object ConfigurationClassGenerator {
         mv.visitEnd()
     }
 
-    private fun emitProviderOf(cw: ClassWriter, grouped: Map<String, List<ProviderEntry>>) {
+    /**
+     * Emits `providerAt`: a chain of `arg0 == index` comparisons, returning the matching class
+     * literal. Kept index-based rather than key-based so several default implementations can
+     * share the empty key without collapsing into one entry.
+     */
+    private fun emitProviderAt(cw: ClassWriter, entries: List<ProviderEntry>) {
         val mv = cw.visitMethod(
             Opcodes.ACC_PUBLIC,
-            "providerOf",
-            "(Ljava/lang/Class;Ljava/lang/String;)Ljava/lang/Class;",
+            "providerAt",
+            "(I)Ljava/lang/Class;",
             null,
             null,
         )
         mv.visitCode()
-        val end = Label()
-        emitServiceKeyChain(mv, grouped, end) { entry ->
+        entries.forEachIndexed { index, entry ->
+            val next = Label()
+            mv.visitVarInsn(Opcodes.ILOAD, 1)
+            mv.visitLdcInsn(index)
+            mv.visitJumpInsn(Opcodes.IF_ICMPNE, next)
             mv.visitLdcInsn(Type.getObjectType(entry.provider.toInternalName()))
             mv.visitInsn(Opcodes.ARETURN)
+            mv.visitLabel(next)
         }
-        mv.visitLabel(end)
         mv.visitInsn(Opcodes.ACONST_NULL)
         mv.visitInsn(Opcodes.ARETURN)
         mv.visitMaxs(0, 0)
         mv.visitEnd()
     }
 
-    private fun emitNewProvider(cw: ClassWriter, grouped: Map<String, List<ProviderEntry>>) {
+    /** Emits `newProviderAt`: `new` or `INVOKESTATIC` for the entry at `arg0`. */
+    private fun emitNewProviderAt(cw: ClassWriter, entries: List<ProviderEntry>) {
         val mv = cw.visitMethod(
             Opcodes.ACC_PUBLIC,
-            "newProvider",
-            "(Ljava/lang/Class;Ljava/lang/String;)Ljava/lang/Object;",
+            "newProviderAt",
+            "(I)Ljava/lang/Object;",
             null,
             null,
         )
         mv.visitCode()
-        val end = Label()
-        emitServiceKeyChain(mv, grouped, end) { entry ->
+        entries.forEachIndexed { index, entry ->
+            val next = Label()
+            mv.visitVarInsn(Opcodes.ILOAD, 1)
+            mv.visitLdcInsn(index)
+            mv.visitJumpInsn(Opcodes.IF_ICMPNE, next)
             val impl = entry.provider.toInternalName()
             if (entry.factory.isEmpty()) {
                 mv.visitTypeInsn(Opcodes.NEW, impl)
@@ -136,45 +147,11 @@ internal object ConfigurationClassGenerator {
                 mv.visitMethodInsn(Opcodes.INVOKESTATIC, impl, entry.factory, "()L$impl;", false)
             }
             mv.visitInsn(Opcodes.ARETURN)
+            mv.visitLabel(next)
         }
-        mv.visitLabel(end)
         mv.visitInsn(Opcodes.ACONST_NULL)
         mv.visitInsn(Opcodes.ARETURN)
         mv.visitMaxs(0, 0)
         mv.visitEnd()
-    }
-
-    /**
-     * Generates a two-level dispatch on `arg0 == service && arg1 == key`. [onHit] runs on a match;
-     * when no branch matches, control falls through to the [end] label (which returns null).
-     */
-    private fun emitServiceKeyChain(
-        mv: MethodVisitor,
-        grouped: Map<String, List<ProviderEntry>>,
-        end: Label,
-        onHit: (ProviderEntry) -> Unit,
-    ) {
-        grouped.forEach { (service, group) ->
-            val nextService = Label()
-            mv.visitVarInsn(Opcodes.ALOAD, 1)
-            mv.visitLdcInsn(Type.getObjectType(service.toInternalName()))
-            mv.visitJumpInsn(Opcodes.IF_ACMPNE, nextService)
-
-            group.forEach { entry ->
-                val nextKey = Label()
-                mv.visitVarInsn(Opcodes.ALOAD, 2)
-                mv.visitLdcInsn(entry.key)
-                mv.visitMethodInsn(
-                    Opcodes.INVOKEVIRTUAL, "java/lang/String", "equals",
-                    "(Ljava/lang/Object;)Z", false,
-                )
-                mv.visitJumpInsn(Opcodes.IFEQ, nextKey)
-                onHit(entry)
-                mv.visitLabel(nextKey)
-            }
-
-            mv.visitJumpInsn(Opcodes.GOTO, end)
-            mv.visitLabel(nextService)
-        }
     }
 }

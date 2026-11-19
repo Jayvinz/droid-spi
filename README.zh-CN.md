@@ -41,12 +41,12 @@ dependencyResolutionManagement {
 plugins {
     id("com.android.application")     // 也可以是 com.android.library / com.android.dynamic-feature
     id("org.jetbrains.kotlin.android")
-    id("top.jayvin.droidspi") version "1.0.0-alpha02"
+    id("top.jayvin.droidspi") version "1.0.0-alpha03"
 }
 
 dependencies {
-    implementation("top.jayvin.droidspi:annotation:1.0.0-alpha02")
-    implementation("top.jayvin.droidspi:runtime:1.0.0-alpha02")
+    implementation("top.jayvin.droidspi:annotation:1.0.0-alpha03")
+    implementation("top.jayvin.droidspi:runtime:1.0.0-alpha03")
 }
 ```
 
@@ -102,6 +102,20 @@ ServiceLoader.stream(HomeService::class.java).forEach { provider ->
 Kotlin 还提供 `ServiceLoader.load<HomeService>()`。所有查询在不可用时返回 `null` / 空集合，
 不会抛异常。
 
+### 多个默认实现
+
+空 key 可以由多个实现共享：
+
+```kotlin
+@ServiceProvider(service = HomeService::class) class HomeServiceImpl : HomeService
+@ServiceProvider(service = HomeService::class) class MirrorHomeServiceImpl : HomeService
+```
+
+`load()` 返回当前可用的第一个；`providers()` / `stream()` 会枚举全部条目（`loadAllClasses()`
+也能拿到全部类）。`loadAll()` 对每个 key 保留第一个可用实现。**非空 key 仍然必须唯一**：
+两个 provider 声明同一个显式 key 依然会导致构建失败。
+不会抛异常。
+
 ### 标准 `META-INF/services`
 
 已经按 JDK SPI 规范提供配置文件的第三方库无需改代码：把文件放进模块的 source resources
@@ -125,6 +139,7 @@ dynamic feature 模块同样需要 apply 插件（编译期只需要 `annotation
 ./gradlew :annotation:publish :runtime:publish :plugin:publish --configure-on-demand
 
 ./gradlew :runtime:testDebugUnitTest
+./gradlew :plugin:test
 ./gradlew :app:assembleFreeDebug :app:assemblePaidDebug :app:assembleFreeRelease :app:assemblePaidRelease
 ```
 
@@ -143,7 +158,7 @@ dynamic feature 模块同样需要 apply 插件（编译期只需要 `annotation
 
 1. 每个模块变体扫描自己的源码目录（main + buildType + flavor 覆盖层），把结果以
    `spi-manifest` 类型的 Gradle artifact 发布到 runtime elements。
-2. app 变体通过 variant-aware 依赖解析读取这些清单，校验 `(service, key)` 唯一性，再用 ASM
+2. app 变体通过 variant-aware 依赖解析读取这些清单，校验非空 key 唯一性（空 key 允许多个实现），再用 ASM
    生成 `ServiceConfiguration` 字节码。生成类**没有 `<clinit>`**：provider 类字面量只出现在方法体
    内，因此未安装的 dynamic module 不会污染整张表。
 3. 运行时 `ProviderRegistry` 按需探测：`NoClassDefFoundError` 转为 `null`/`MISSING`，下次重试；
@@ -160,6 +175,6 @@ dynamic feature 模块同样需要 apply 插件（编译期只需要 `annotation
 ## 限制
 
 - service 接口必须位于 base / 常驻模块，不能放在 dynamic feature 中。
-- 每个 `(service, key)` 全局只能有一个 provider，冲突会导致构建失败。
+- 非空 key 在每个 service 内必须唯一，冲突会导致构建失败；空 key（默认实现）可以有多实现。
 - service 接口不支持嵌套类和 `typealias`。
 - R8 需要为可能缺失的模块添加 `-dontwarn`（见 `app/proguard-rules.pro`）。

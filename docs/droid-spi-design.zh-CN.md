@@ -197,11 +197,11 @@ your-module/src/main/resources/META-INF/services/com.example.core.api.LegacyServ
 | 范围 | 只读这些文本文件；**不解压 jar / aar、不扫 class**，延续 C3 |
 | `key` | 标准 SPI 无此概念 → `""`（默认变体） |
 | 实例化 | 无 factory → 无参构造，**实现类必须有公开无参构造** |
-| 去重 | 与注解声明指向同一 provider（整行相同）时去重；不同实现抢同一 `(service, key)` 由聚合任务报错 |
+| 去重 | 与注解声明指向同一 provider（整行相同）时去重；不同实现抢同一**非空 key** 由聚合任务报错（空 key 允许多个实现） |
 | 合法性 | provider 名不匹配 `^[\w.$]+$` 直接构建失败，给出文件名与行内容 |
 
 每条配置映射成 `ProviderEntry(service, provider, "", "")`，之后与注解来源完全同路：
-进入模块清单 → 聚合校验 → 生成 class 的 `providerOf` / `newProvider`。运行时无差别。
+进入模块清单 → 聚合校验 → 生成 class 的 `providerAt` / `newProviderAt`。运行时无差别。
 
 前置条件：该模块必须 apply `top.jayvin.droidspi` 插件（否则没有 `{variantName}ScanProviders` 任务）。
 `modules/core-common` 就是只有 SPI 配置、没有注解的最小示例 —— 它的清单输出为：
@@ -231,8 +231,9 @@ com.example.core.api.AccountService	com.example.feature.account.GuestAccountServ
   并对它们的 runtime elements 取同样的按类型过滤的 artifact view。没有应用插件的动态特性不会携带
   清单 artifact，自然贡献 0 条 provider —— 不声明 provider 的特性没有必须应用插件的要求。
 
-`GenerateServiceConfigurationTask` 按 app 的每个 variant 运行，校验 `(service, key)` 全局唯一
-（冲突直接报错并列出两个 provider），再生成 `ServiceConfiguration` 字节码并追加到该 variant 的
+`GenerateServiceConfigurationTask` 按 app 的每个 variant 运行，校验每个**非空 key** 在每个 service
+内唯一（冲突直接报错并列出两个 provider；空 key 允许多个实现），再生成 `ServiceConfiguration`
+字节码并追加到该 variant 的
 `ScopedArtifact.CLASSES`。由于清单是普通的任务输出 artifact，scan → generate 的边由 Gradle
 自己维护，configuration cache 复用和 isolated projects 下都不会丢；若改成跨工程 `Provider`
 或 root 扩展传递，configuration cache 复用时会退化为普通文件，scan 任务会静默从任务图消失。
@@ -244,12 +245,10 @@ com.example.core.api.AccountService	com.example.feature.account.GuestAccountServ
 **① 不生成 `<clinit>`。** 所有类字面量只出现在方法体里：
 
 ```java
-public Class providerOf(Class service, String key) {
-    if (service == HomeService.class) {
-        if (key.equals(""))    return HomeServiceImpl.class;   // ldc 只在这里解析
-        if (key.equals("vip")) return VipHomeServiceImpl.class;
-        ...
-    }
+public Class providerAt(int index) {
+    if (index == 0) return HomeServiceImpl.class;   // ldc 只在这里解析
+    if (index == 1) return VipHomeServiceImpl.class;
+    ...
     return null;
 }
 ```
@@ -303,13 +302,15 @@ variant 选择来解析它，producer 边得以保留。app 在 `projectsEvaluat
 interface ProviderConfiguration {
     fun services(): Array<Class<*>>
     fun keys(): Array<String>
-    fun providerOf(service: Class<*>, key: String): Class<*>?   // 只解析，不触发 <clinit>
-    fun newProvider(service: Class<*>, key: String): Any?         // 解析 + 实例化
+    fun providerAt(index: Int): Class<*>?   // 只解析，不触发 <clinit>
+    fun newProviderAt(index: Int): Any?     // 解析 + 实例化
 }
 ```
 
-把"类在不在"和"类能不能初始化"拆成两个方法，是整套设计能区分 `MISSING`（模块没装，可重试）
-与 `DEAD`（`<clinit>` 失败，不可逆）的前提。
+条目按 `services()` / `keys()` 的下标寻址，而不是按 `(service, key)`。把"类在不在"和"类能不能
+初始化"拆成两个方法，是整套设计能区分 `MISSING`（模块没装，可重试）与 `DEAD`（`<clinit>` 失败，
+不可逆）的前提。下标寻址还允许空 key 拥有多个实现：枚举时遍历所有下标，按 key 查找时取第一个
+可用条目。
 
 ### 4.2 按需探测与 DEAD 缓存
 
@@ -319,24 +320,28 @@ interface ProviderConfiguration {
 
 | 状态 | 含义 | 进入条件 |
 |---|---|---|
-| `MISSING` | provider 类当前不可见 | `providerOf` 抛异常（例如 `NoClassDefFoundError`）或返回 null |
-| `READY` | provider 类可解析 | `providerOf` 返回非 null |
-| `DEAD` | 不可用且重试无意义 | `newProvider` 抛 `ExceptionInInitializerError`，或消息含 `Could not initialize class` |
+| `MISSING` | provider 类当前不可见 | `providerAt` 抛异常（例如 `NoClassDefFoundError`）或返回 null |
+| `READY` | provider 类可解析 | `providerAt` 返回非 null |
+| `DEAD` | 不可用且重试无意义 | `newProviderAt` 抛 `ExceptionInInitializerError`，或消息含 `Could not initialize class` |
 
-`load()` 直接调用 `newProvider()`：
+同一 key 有多个默认实现时状态按聚合计算：任一 `READY` 即为 `READY`，否则任一 `MISSING` 即为
+`MISSING`，全部 `DEAD` 才是 `DEAD`。
 
-- 成功 → 返回实例；
-- `NoClassDefFoundError`（模块未装）→ 返回 null，**不缓存**，下次调用再试；
-- `<clinit>` 失败 → 加入 `dead` 集合，本进程内不再尝试；
-- 工厂抛出的其他异常（业务异常）→ 返回 null，不缓存，下次调用再试。
+`load()` 遍历 `(service, key)` 的所有条目并直接调用 `newProviderAt()`：
+
+- 成功 → 返回实例（第一个可用条目胜出）；
+- `NoClassDefFoundError`（模块未装）→ 本次跳过该条目，**不缓存**，尝试下一个条目并在下次调用重试；
+- `<clinit>` 失败 → 该条目下标加入 `dead` 集合，本进程内不再尝试；
+- 工厂抛出的其他异常（业务异常）→ 不缓存，下次调用再试。
 
 因此没有 `refresh()`，也不存在"装好了但表没更新"的窗口：模块装好后下一次 `load()` 自然成功。
 `DEAD` 是唯一需要记住的状态，避免反复触发同一个初始化失败。
 
-`newProvider` 抛 `Failed resolution of`（模块被卸载）时同样不缓存，下次再试。
+`newProviderAt` 抛 `Failed resolution of`（模块被卸载）时同样不缓存，下次再试。
 
 `loadClass()` 与 `stateOf()` 把解析失败统一报为 `MISSING`，且不记录 `DEAD`：`DEAD` 只会在
-`load()` / `newProvider()` 真正实例化 provider、从而观察到 erroneous `<clinit>` 时写入。
+`load()` / `newProviderAt()` 真正实例化 provider、从而观察到 erroneous `<clinit>` 时写入；
+`DEAD` 按下标记录，因为同一空 key 可以有多个条目。
 
 ### 4.3 初始化入口：compileOnly 占位类
 
@@ -453,7 +458,7 @@ Kotlin 侧则保留 `load<HomeService>()` 内联写法和 `stream()` 的 `Sequen
 ## 5. 关键 JVM 语义
 
 **① `ldc X.class` 只解析、不初始化。**
-所以 `providerOf` 天然把"类在不在 dex 里"与"类能不能正确初始化"分成两个阶段。
+所以 `providerAt` 天然把"类在不在 dex 里"与"类能不能正确初始化"分成两个阶段。
 
 **② 类初始化失败是一次性的。**
 `<clinit>` 抛错后类被标记 erroneous，后续任何访问都是 `Could not initialize class`，
@@ -522,7 +527,7 @@ WMRouter 的 `ServiceLoader.put()` 是 public static，可以手工接入动态�
 | Configuration cache | 存储 + 复用通过；`--configuration-cache` 下改源码仍能重跑 scan/generate；四个 variant 一次构建；`:app:bundleFreeDebug` 通过 |
 | Isolated projects | `-Dorg.gradle.unsafe.isolated-projects=true` 下，存储/复用、增删 provider、四个 variant 与 AAB 构建均通过 |
 | 动态特性不接插件 | 从 `dynamicFeatures` 的某个工程移除插件后仍可正常构建（标准与 isolated 模式）；表中只是没有该特性的 provider，恢复插件后重新出现 |
-| 生成字节码 | `javap -c` 确认：**无 `<clinit>`**、`providerOf` 只有 `ldc`、`newProvider` 对 `@ProviderFactory` 用 `INVOKESTATIC`；`services()` / `keys()` 按下标一一对应（debug 8 条、release 7 条） |
+| 生成字节码 | `javap -c` 确认：**无 `<clinit>`**、`providerAt` 只有 `ldc`、`newProviderAt` 对 `@ProviderFactory` 用 `INVOKESTATIC`；`services()` / `keys()` 按下标一一对应（debug 8 条、release 7 条） |
 | 分包正确性 | `dexdump` 确认 `CameraServiceImpl` 只在 `feature_camera/dex`，base dex 只有引用 |
 | 标准 SPI 配置 | `modules/core-common` 的 `META-INF/services/...LegacyService` 被扫描进清单（`LegacyService → LegacyServiceImpl`），生成字节码含 `ldc LegacyServiceImpl` 与 `new LegacyServiceImpl`，`MainActivity` 调用 `ServiceLoader.load(LegacyService::class.java)` 返回非空 |
 

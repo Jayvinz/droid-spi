@@ -42,12 +42,12 @@ dependencyResolutionManagement {
 plugins {
     id("com.android.application")     // or com.android.library / com.android.dynamic-feature
     id("org.jetbrains.kotlin.android")
-    id("top.jayvin.droidspi") version "1.0.0-alpha02"
+    id("top.jayvin.droidspi") version "1.0.0-alpha03"
 }
 
 dependencies {
-    implementation("top.jayvin.droidspi:annotation:1.0.0-alpha02")
-    implementation("top.jayvin.droidspi:runtime:1.0.0-alpha02")
+    implementation("top.jayvin.droidspi:annotation:1.0.0-alpha03")
+    implementation("top.jayvin.droidspi:runtime:1.0.0-alpha03")
 }
 ```
 
@@ -103,6 +103,20 @@ ServiceLoader.stream(HomeService::class.java).forEach { provider ->
 Kotlin also has `ServiceLoader.load<HomeService>()`. Every lookup returns `null` / an empty
 collection when a provider is unavailable; nothing throws.
 
+### Several default implementations
+
+The empty key may be shared by more than one implementation:
+
+```kotlin
+@ServiceProvider(service = HomeService::class) class HomeServiceImpl : HomeService
+@ServiceProvider(service = HomeService::class) class MirrorHomeServiceImpl : HomeService
+```
+
+`load()` returns the first one that is currently available; `providers()` / `stream()` enumerate
+every entry (all of them are also available from `loadAllClasses()`). `loadAll()` keeps the first
+available implementation per key. Any **non-empty** key stays unique: two providers declaring the
+same explicit key still fail the build.
+
 ### Standard `META-INF/services`
 
 Libraries that already ship a JDK SPI file can be integrated without touching their code: put the
@@ -127,6 +141,7 @@ and no `refresh()`.
 ./gradlew :annotation:publish :runtime:publish :plugin:publish --configure-on-demand
 
 ./gradlew :runtime:testDebugUnitTest
+./gradlew :plugin:test
 ./gradlew :app:assembleFreeDebug :app:assemblePaidDebug :app:assembleFreeRelease :app:assemblePaidRelease
 ```
 
@@ -146,7 +161,8 @@ per module, per variant                app, per variant                  runtime
 1. Every module variant scans its own source directories (main + build-type + flavor overlays)
    and publishes the result as a `spi-manifest`-typed Gradle artifact on its runtime elements.
 2. The application variant reads those artifacts through variant-aware resolution, validates
-   `(service, key)` uniqueness, and emits `ServiceConfiguration` bytecode with ASM. The class has
+   non-empty key uniqueness (the default key may have several providers), and emits
+   `ServiceConfiguration` bytecode with ASM. The class has
    no `<clinit>`: provider class literals appear only inside method bodies, so an uninstalled
    dynamic module cannot poison the table.
 3. At runtime, `ProviderRegistry` probes on demand. `NoClassDefFoundError` becomes `null`/`MISSING`
@@ -163,6 +179,7 @@ Long-form articles: [Introducing Droid-spi](docs/articles/01-introducing-droid-s
 ## Limitations
 
 - Service interfaces must live in the base / resident modules, not in dynamic features.
-- Exactly one provider per `(service, key)`; duplicates fail the build.
+- A non-empty key is unique per service; duplicates fail the build. The default (empty) key may
+  have several implementations.
 - No nested classes or `typealias` as service interfaces.
 - R8 needs `-dontwarn` for modules that may be absent (see `app/proguard-rules.pro`).

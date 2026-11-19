@@ -40,10 +40,10 @@ abstract class GenerateServiceConfigurationTask : DefaultTask() {
     @get:OutputDirectory
     abstract val outputDir: DirectoryProperty
 
-    /** Merges the manifests, validates `(service, key)` uniqueness, and writes the configuration class. */
+    /** Merges the manifests, validates key uniqueness, and writes the configuration class. */
     @TaskAction
     fun run() {
-        val bySlot = LinkedHashMap<Pair<String, String>, ProviderEntry>()
+        val raw = ArrayList<ProviderEntry>()
 
         manifests.files.filter { it.isFile }.sortedBy { it.path }.forEach { file ->
             file.readLines().filter { it.isNotBlank() }.forEach { line ->
@@ -51,17 +51,11 @@ abstract class GenerateServiceConfigurationTask : DefaultTask() {
                 if (entry.service.isEmpty() || entry.provider.isEmpty()) {
                     throw GradleException("Invalid manifest line (${file.name}): $line")
                 }
-                val prev = bySlot.put(entry.service to entry.key, entry)
-                if (prev != null) {
-                    throw GradleException(
-                        "Duplicate registration: service ${entry.service} key=\"${entry.key}\" is implemented by " +
-                            "both ${prev.provider} and ${entry.provider}"
-                    )
-                }
+                raw += entry
             }
         }
 
-        val entries = bySlot.values.toList()
+        val entries = ProviderTable.merge(raw)
         val pkg = packageName.get()
         val simpleName = className.get()
 
