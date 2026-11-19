@@ -68,10 +68,9 @@ jobs:
           mkdir -p build/central-bundle/top/jayvin/droidspi
           cp -R local-repo/top/jayvin/droidspi/annotation build/central-bundle/top/jayvin/droidspi/
           cp -R local-repo/top/jayvin/droidspi/runtime build/central-bundle/top/jayvin/droidspi/
-          # Central generates checksums and metadata itself; stale local files confuse validation.
-          find build/central-bundle -type f \
-            \( -name 'maven-metadata.xml*' -o -name '*.md5' -o -name '*.sha1' \
-               -o -name '*.sha256' -o -name '*.sha512' \) -delete
+          # Central requires md5 + sha1 for every file, so keep the checksums that the local
+          # publication generated; only stale repository metadata has to go.
+          find build/central-bundle -type f -name 'maven-metadata.xml*' -delete
           (cd build/central-bundle && zip -qr ../central-bundle.zip top)
 
       - name: Upload the bundle to Maven Central
