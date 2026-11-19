@@ -31,9 +31,18 @@ import java.lang.annotation.Target;
 @Retention(RetentionPolicy.CLASS)
 public @interface ServiceProvider {
 
-    /** The service interface; must be a class literal {@code Xxx.class} or Kotlin's {@code Xxx::class}. */
+    /**
+     * The service interface.
+     *
+     * @return the service interface; must be a class literal {@code Xxx.class} or Kotlin's
+     *     {@code Xxx::class}
+     */
     Class<?> service();
 
-    /** Variant label within the same interface, such as "vip" / "lite"; leave empty for the default implementation. */
+    /**
+     * Variant label within the same interface.
+     *
+     * @return the variant label, such as "vip" / "lite"; empty for the default implementation
+     */
     String key() default "";
 }
