@@ -9,6 +9,9 @@ package top.jayvin.android.spi
  *
  * Providers obtained from [ServiceLoader.stream] / [ServiceLoader.findFirst] are always
  * [READY][ProviderState.READY].
+ *
+ * All methods are total: they never throw. Unavailability is reported by [get] returning null
+ * and [state] reporting [ProviderState.MISSING] / [ProviderState.DEAD].
  */
 interface Provider<S : Any> {
 

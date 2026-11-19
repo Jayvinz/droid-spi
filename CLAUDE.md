@@ -138,6 +138,9 @@ an empty configuration is used.
 - `load()` returns `null` when unavailable (it never throws). The default key is the empty
   string (`ServiceLoader.DEFAULT_KEY`); if the default key is absent and the service has
   exactly one available provider, that provider is used as a fallback.
+- The `ServiceLoader` facade never throws: before `initialize()` it logs a warning once, and a
+  missing / invalid `ServiceConfiguration` is logged as an error; both degrade to `null` / an
+  empty collection.
 - No Play install listener is registered; `SplitInstallStateUpdatedListener` / `InstallWatcher`
   have been removed.
 

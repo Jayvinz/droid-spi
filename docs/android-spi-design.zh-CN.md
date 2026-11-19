@@ -418,10 +418,10 @@ object ServiceLoader {
 }
 ```
 
-`initialize()` 必须先于任何查询执行，且是幂等的——重复调用不做任何事。在 `initialize()` 之前调用
-查询方法会抛 `IllegalStateException`；`stateOf()` / `snapshot()` 在初始化前是安全的，分别返回
-null / 空列表。`initialize()` 自身不抛异常——生成类缺失时降级为空配置。初始化完成后，
-服务不可用是常态，查询方法返回 null（或空集合）而不抛异常。
+`initialize()` 应先于任何查询执行，且是幂等的——重复调用不做任何事。门面永不抛异常：在
+`initialize()` 之前调用查询方法会打印一次警告并返回 null / 空集合；`initialize()` 自身在生成类
+缺失或配置无效时打印错误并降级为空配置。初始化完成后，服务不可用是常态，查询方法返回 null
+（或空集合）而不抛异常。
 
 除 inline 方法外，所有公开方法都有 `@JvmStatic`；Java 不支持 reified，用 Class 字面量调用；
 `Sequence` 在 Java 里不适合直接遍历，因此额外提供 `providers()` 返回 `List`：
@@ -511,7 +511,7 @@ WMRouter 的 `ServiceLoader.put()` 是 public static，可以手工接入动态�
 | 项 | 命令 / 结果 |
 |---|---|
 | 工具链编译 | `./gradlew :plugin:compileKotlin` ✅ |
-| 运行时单测 | `./gradlew :runtime:testDebugUnitTest` → JVM 上 7 个测试全部通过（未装返回 null、安装后无需 refresh 直接成功、每次 load 重试、DEAD 不重试、未注册 key、stream 不实例化等） |
+| 运行时单测 | `./gradlew :runtime:testDebugUnitTest` → JVM 上 9 个测试全部通过（注册表行为 + 门面不抛异常 / 降级测试） |
 | 示例 APK | `:app:assembleFreeDebug` ✅；manifest 确认 Application；配置类由 `FreeDebugScanProviders` / `FreeDebugGenerateServiceConfiguration` 生成并打进 base dex |
 | 示例 AAB | `:app:bundleFreeDebug` ✅，`base` / `feature_camera` 分包 |
 | 变体矩阵 | `assembleFreeDebug` / `assemblePaidDebug` / `assembleFreeRelease` / `assemblePaidRelease` 四个组合全部 ✅（clean 后重建亦通过）；`javap` + `dexdump` 确认每个 APK 只含自己 flavor 的 `ChannelServiceImpl`，debug 包另有 `DebugServiceImpl`，release 包没有 |

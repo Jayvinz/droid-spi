@@ -237,8 +237,9 @@ for (Provider<HomeService> p : ServiceLoader.providers(HomeService.class)) {
 
 All `load*` methods return `null` instead of throwing: an unavailable service
 (a dynamic module that is not installed) is a normal state, not an error.
-Call `initialize()` before any lookup; calling a lookup method before initialization throws
-`IllegalStateException`.
+The facade never throws: call `initialize()` in `Application.onCreate`; a lookup before
+initialization logs a warning (once) and returns `null` / an empty collection, and a missing or
+broken generated table degrades to an empty configuration.
 
 ## Compatible with standard SPI configuration (META-INF/services)
 

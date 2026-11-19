@@ -18,6 +18,10 @@ package top.jayvin.android.spi
  * `<clinit>`. That way, while a dynamic module is not installed, only the method throws
  * [NoClassDefFoundError]; the configuration table itself is not marked erroneous, and one more
  * call after the module is installed succeeds.
+ *
+ * This is the generator-facing contract, not a business-facing facade: the runtime registry
+ * catches these errors and reports them as [ProviderState] / null, so code using [ServiceLoader]
+ * never observes them.
  */
 interface ProviderConfiguration {
 

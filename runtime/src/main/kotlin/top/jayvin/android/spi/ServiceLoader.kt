@@ -3,6 +3,7 @@ package top.jayvin.android.spi
 import android.util.Log
 import top.jayvin.android.spi.generated.ServiceConfiguration
 import top.jayvin.android.spi.internal.ProviderRegistry
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * Public facade, named after `java.util.ServiceLoader`. Business code only touches this class.
@@ -29,6 +30,10 @@ import top.jayvin.android.spi.internal.ProviderRegistry
  * - [load] returns an instance directly, whereas the JDK's `load()` returns a loader object;
  * - there is an extra `key` variant and [ProviderState];
  * - when a service is not ready, it returns null instead of throwing.
+ *
+ * The facade never throws: calling any lookup before [initialize], or running with a broken /
+ * missing `ServiceConfiguration`, logs a warning or error and degrades to `null` / an empty
+ * collection instead of raising.
  */
 object ServiceLoader {
 
@@ -38,6 +43,8 @@ object ServiceLoader {
     @Volatile
     private var registry: ProviderRegistry? = null
 
+    private val uninitializedWarning = AtomicBoolean(false)
+
     /**
      * Called once at application startup (usually in `Application.onCreate`).
      *
@@ -45,13 +52,19 @@ object ServiceLoader {
      * afterwards business code can call [load]. Providers are probed lazily: after a module is
      * installed and its classes are visible to the current process, the next `load()` simply succeeds.
      *
-     * Safe to call more than once; later calls are no-ops.
+     * Safe to call more than once; later calls are no-ops. A missing or invalid configuration is
+     * logged and replaced by an empty one, so this method does not throw either.
      */
     @JvmStatic
     fun initialize() {
         synchronized(this) {
             if (registry != null) return
-            registry = ProviderRegistry(loadConfiguration())
+            registry = try {
+                ProviderRegistry(loadConfiguration())
+            } catch (t: Throwable) {
+                Log.e(TAG, "ServiceConfiguration is unavailable; ServiceLoader will return empty data", t)
+                ProviderRegistry(EmptyConfiguration)
+            }
         }
     }
 
@@ -59,15 +72,12 @@ object ServiceLoader {
     @JvmStatic
     fun isInitialized(): Boolean = registry != null
 
-    private fun loadConfiguration(): ProviderConfiguration =
-        try {
-            val raw: Any = ServiceConfiguration()
-            raw as? ProviderConfiguration
-                ?: throw IllegalStateException("ServiceConfiguration does not implement ProviderConfiguration")
-        } catch (t: Throwable) {
-            Log.e(TAG, "ServiceConfiguration unavailable; ServiceLoader will return empty data", t)
-            EmptyConfiguration
-        }
+    /** Builds the table from the generated class; [initialize] logs and degrades on any failure. */
+    private fun loadConfiguration(): ProviderConfiguration {
+        val raw: Any = ServiceConfiguration()
+        return raw as? ProviderConfiguration
+            ?: throw IllegalStateException("ServiceConfiguration does not implement ProviderConfiguration")
+    }
 
     /** Fallback configuration when the app did not apply the plugin: every query returns empty. */
     private object EmptyConfiguration : ProviderConfiguration {
@@ -79,11 +89,26 @@ object ServiceLoader {
 
     private const val TAG = "AndroidSpi"
 
-    private fun require(): ProviderRegistry =
-        registry ?: error(
-            "ServiceLoader is not initialized: call " +
-                "ServiceLoader.initialize() in Application.onCreate"
-        )
+    /** Returns the registry, or null after warning once when [initialize] has not run. */
+    private fun registryOrNull(): ProviderRegistry? {
+        val current = registry
+        if (current == null && uninitializedWarning.compareAndSet(false, true)) {
+            Log.w(
+                TAG,
+                "ServiceLoader is not initialized; call initialize() in Application.onCreate " +
+                    "(lookups return null / empty until then)",
+            )
+        }
+        return current
+    }
+
+    /** Test-only: clears the registry and the uninitialized warning state. */
+    internal fun resetForTest() {
+        synchronized(this) {
+            registry = null
+            uninitializedWarning.set(false)
+        }
+    }
 
     // ── Instance lookup ──────────────────────────────────────────
     /**
@@ -100,7 +125,7 @@ object ServiceLoader {
     @JvmStatic
     @JvmOverloads
     fun <T : Any> load(service: Class<T>, key: String = DEFAULT_KEY): T? =
-        require().load(service, key)
+        registryOrNull()?.load(service, key)
 
     /**
      * Kotlin convenience form: `load<HomeService>()` / `load<HomeService>("vip")`.
@@ -121,7 +146,7 @@ object ServiceLoader {
     @JvmStatic
     @JvmOverloads
     fun <T : Any> providerOf(service: Class<T>, key: String = DEFAULT_KEY): Provider<T>? =
-        require().providerOf(service, key)
+        registryOrNull()?.providerOf(service, key)
 
     /**
      * Returns the first provider of [service], preferring the default key.
@@ -142,7 +167,7 @@ object ServiceLoader {
      */
     @JvmStatic
     fun <T : Any> stream(service: Class<T>): Sequence<Provider<T>> =
-        require().providers(service).asSequence()
+        providers(service).asSequence()
 
     /**
      * Java-friendly equivalent of [stream]: `Sequence` is awkward in Java, so Java callers can
@@ -157,7 +182,7 @@ object ServiceLoader {
      */
     @JvmStatic
     fun <T : Any> providers(service: Class<T>): List<Provider<T>> =
-        require().providers(service)
+        registryOrNull()?.providers(service).orEmpty()
 
     // ── Class only, no instantiation ─────────────────────────────
     /**
@@ -171,7 +196,7 @@ object ServiceLoader {
     @JvmStatic
     @JvmOverloads
     fun <T : Any> loadClass(service: Class<T>, key: String = DEFAULT_KEY): Class<out T>? =
-        require().loadClass(service, key)
+        registryOrNull()?.loadClass(service, key)
 
     // ── All ──────────────────────────────────────────────────────
     /**
@@ -181,7 +206,8 @@ object ServiceLoader {
      * @return available variants keyed by variant label; empty when none are available
      */
     @JvmStatic
-    fun <T : Any> loadAll(service: Class<T>): Map<String, T> = require().loadAll(service)
+    fun <T : Any> loadAll(service: Class<T>): Map<String, T> =
+        registryOrNull()?.loadAll(service).orEmpty()
 
     /**
      * Returns every available provider class of [service], without instantiating them.
@@ -191,7 +217,7 @@ object ServiceLoader {
      */
     @JvmStatic
     fun <T : Any> loadAllClasses(service: Class<T>): List<Class<out T>> =
-        require().loadAllClasses(service)
+        registryOrNull()?.loadAllClasses(service).orEmpty()
 
     // ── State queries ────────────────────────────────────────────
     /**
@@ -205,7 +231,7 @@ object ServiceLoader {
     @JvmStatic
     @JvmOverloads
     fun stateOf(service: Class<*>, key: String = DEFAULT_KEY): ProviderState? =
-        registry?.stateOf(service, key)
+        registryOrNull()?.stateOf(service, key)
 
     /**
      * Returns a state snapshot of the entire table for debugging. Every pair is re-probed, so
@@ -215,5 +241,5 @@ object ServiceLoader {
      */
     @JvmStatic
     fun snapshot(): List<Triple<String, String, ProviderState>> =
-        registry?.snapshot() ?: emptyList()
+        registryOrNull()?.snapshot().orEmpty()
 }
