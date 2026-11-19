@@ -24,8 +24,8 @@ pluginManagement {
         maven {
             url = uri("https://maven.pkg.github.com/Garenzhou/android-spi")
             credentials {
-                username = providers.gradleProperty("gpr.user").get()
-                password = providers.gradleProperty("gpr.key").get()
+                username = providers.gradleProperty("gpr.user").orNull ?: System.getenv("GITHUB_ACTOR")
+                password = providers.gradleProperty("gpr.key").orNull ?: System.getenv("GITHUB_TOKEN")
             }
         }
         gradlePluginPortal()
@@ -38,8 +38,8 @@ dependencyResolutionManagement {
         maven {
             url = uri("https://maven.pkg.github.com/Garenzhou/android-spi")
             credentials {
-                username = providers.gradleProperty("gpr.user").get()
-                password = providers.gradleProperty("gpr.key").get()
+                username = providers.gradleProperty("gpr.user").orNull ?: System.getenv("GITHUB_ACTOR")
+                password = providers.gradleProperty("gpr.key").orNull ?: System.getenv("GITHUB_TOKEN")
             }
         }
         google()
