@@ -490,7 +490,7 @@ WMRouter 的 `ServiceLoader.put()` 是 public static，可以手工接入动态�
 | 不支持嵌套类 / `typealias` | 扫描器按顶层类型解析 | 已记录的限制；service 请声明为顶层接口 |
 | R8 missing class | base 引用未安装模块的类会告警 | 按模块补 `-dontwarn`（示例已给） |
 | 非 Play 渠道 | 框架没有内建安装通道，split 可见性取决于宿主 | 由宿主实现自己的分发通道；已打进包里的 provider 保持 READY |
-| 配置缓存 | 用了 `projectsEvaluated` 与跨工程 Provider | 迁移到 isolated projects 前不要开 configuration cache |
+| 配置缓存 | 标准模式已实测支持（存储/复用、源码变更、多 variant、clean + build cache 组合均通过）；插件不持有不可序列化的 `Project` 状态，`spiRoot` 里只放 `Provider<RegularFile>`。incubating 的 **isolated projects** 不支持：每个模块在配置期读取 root 项目的 `spiRoot` 扩展，产生 6 个跨工程访问问题 | 保持 `org.gradle.unsafe.isolated-projects` 关闭；标准 `--configuration-cache` 可用 |
 
 ---
 
@@ -507,6 +507,9 @@ WMRouter 的 `ServiceLoader.put()` 是 public static，可以手工接入动态�
 | 变体矩阵 | `assembleFreeDebug` / `assemblePaidDebug` / `assembleFreeRelease` / `assemblePaidRelease` 四个组合全部 ✅（clean 后重建亦通过）；`javap` + `dexdump` 确认每个 APK 只含自己 flavor 的 `ChannelServiceImpl`，debug 包另有 `DebugServiceImpl`，release 包没有 |
 | 真机 UI 测试 | 四个 APK 并存安装于小米 M2012K11C（Android 13）；每个自检页均为 `SELF-CHECK PASS 12/12`；截图见 `build/ui-test/`；点击"Re-run checks"与"Camera module"无崩溃（侧载 APK 无 Play 商店，split install 以 -14 错误优雅失败） |
 | 增量构建 | 第二次 `:app:assembleFreeDebug` 时所有 `ScanProviders` / `GenerateServiceConfiguration` 任务均为 UP-TO-DATE，确认可缓存任务接线生效 |
+| 增删 provider | 临时增删一个 provider 只重跑该模块的 scan + generate（及下游打包），其它模块 scan 保持 UP-TO-DATE；还原后任务 FROM-CACHE |
+| Build cache | `clean` 后重建时所有 scan + generate 任务 FROM-CACHE；把工程按字节一致地复制到另一个绝对路径后同样全部 FROM-CACHE，验证了 RELATIVE 路径敏感度与确定性输出 |
+| Configuration cache | 存储 + 复用通过；`--configuration-cache` 下改源码仍能重跑 scan/generate；四个 variant 一次构建；`:app:bundleFreeDebug` 通过。isolated projects 模式因跨工程访问 `spiRoot` 扩展而失败（见第 7 节） |
 | 生成字节码 | `javap -c` 确认：**无 `<clinit>`**、`providerOf` 只有 `ldc`、`newProvider` 对 `@ProviderFactory` 用 `INVOKESTATIC`；`services()` / `keys()` 按下标一一对应（debug 8 条、release 7 条） |
 | 分包正确性 | `dexdump` 确认 `CameraServiceImpl` 只在 `feature_camera/dex`，base dex 只有引用 |
 | 标准 SPI 配置 | `modules/core-common` 的 `META-INF/services/...LegacyService` 被扫描进清单（`LegacyService → LegacyServiceImpl`），生成字节码含 `ldc LegacyServiceImpl` 与 `new LegacyServiceImpl`，`MainActivity` 调用 `ServiceLoader.load(LegacyService::class.java)` 返回非空 |
