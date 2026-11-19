@@ -87,22 +87,22 @@ Then add and remove a temporary `@ServiceProvider` once with each cache mode to 
 scan → generate edges survive, inspect the generated classes and APK contents, and re-run the
 four-variant on-device self-check screen.
 
-## CI and release
+## Release
 
-`.github/workflows/ci.yml` runs on every push and pull request: it publishes the framework to
-`local-repo` (with `--configure-on-demand`), runs the runtime unit tests, assembles all four
-variants, and repeats the build with configuration cache and isolated projects.
+The only workflow is `.github/workflows/release.yml`; it runs on a `v*` tag or a manual
+`workflow_dispatch` (select the tag, not `main`). There is no push/PR CI workflow: run the
+verification checklist above locally before tagging.
 
-Production publishing is **CI-only**; the build itself has no production repository. A local
-`./gradlew publish` writes unsigned artifacts to `local-repo/` and nothing else.
-
-`.github/workflows/release.yml` runs on a `v*` tag. It verifies that the tag equals
-`v$spiVersion`, checks the required secrets, and then:
+The release workflow verifies that the tag equals `v$spiVersion`, checks the required secrets,
+and then:
 
 - publishes a signed bundle of `annotation` and `runtime` to **Maven Central** through the
   Central Portal Publisher API (`publishingType=AUTOMATIC`), polling until `PUBLISHED`;
 - publishes the Gradle plugin to the **Gradle Plugin Portal** with `:plugin:publishPlugins`;
 - attaches the jars/AAR to the GitHub Release.
+
+Production publishing is **CI-only**; the build itself has no production repository. A local
+`./gradlew publish` writes unsigned artifacts to `local-repo/` and nothing else.
 
 Required repository secrets: `SONATYPE_USERNAME`, `SONATYPE_PASSWORD` (a Central Portal user
 token), `SIGNING_KEY` (ASCII-armored private key), `SIGNING_PASSWORD`,

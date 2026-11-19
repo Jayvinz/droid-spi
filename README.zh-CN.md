@@ -1,7 +1,5 @@
 # Droid-spi
 
-[![CI](https://github.com/Jayvinz/droid-spi/actions/workflows/ci.yml/badge.svg)](https://github.com/Jayvinz/droid-spi/actions/workflows/ci.yml)
-
 面向 Android 的编译期服务发现。用 `@ServiceProvider` 注解或标准 `META-INF/services` 文件声明
 provider，Gradle 插件生成一个固定类名的配置类，运行时**零反射**解析——包括位于按需下载的
 dynamic feature 模块中的 provider。
