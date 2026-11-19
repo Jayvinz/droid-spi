@@ -65,9 +65,9 @@ jobs:
 
       - name: Bundle the Maven Central artifacts
         run: |
-          mkdir -p build/central-bundle/top/jayvin/droidspi
-          cp -R local-repo/top/jayvin/droidspi/annotation build/central-bundle/top/jayvin/droidspi/
-          cp -R local-repo/top/jayvin/droidspi/runtime build/central-bundle/top/jayvin/droidspi/
+          mkdir -p build/central-bundle/io/github/jayvinz
+          cp -R local-repo/io/github/jayvinz/droidspi-annotation build/central-bundle/io/github/jayvinz/
+          cp -R local-repo/io/github/jayvinz/droidspi-runtime build/central-bundle/io/github/jayvinz/
           # Central requires md5 + sha1 for every file, so keep the checksums that the local
           # publication generated; only stale repository metadata has to go.
           find build/central-bundle -type f -name 'maven-metadata.xml*' -delete

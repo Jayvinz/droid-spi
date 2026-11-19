@@ -72,8 +72,8 @@ dependencies {
     implementation(project(":modules:feature-home"))
     implementation(project(":modules:feature-account"))
 
-    implementation("top.jayvin.droidspi:annotation:$spiVersion")
-    implementation("top.jayvin.droidspi:runtime:$spiVersion")
+    implementation("io.github.jayvinz:droidspi-annotation:$spiVersion")
+    implementation("io.github.jayvinz:droidspi-runtime:$spiVersion")
     // The demo owns dynamic-module installation and visibility.
     implementation("com.google.android.play:feature-delivery:2.1.0")
 }

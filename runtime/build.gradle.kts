@@ -52,6 +52,7 @@ afterEvaluate {
     publishing {
         publications {
             create<MavenPublication>("release") {
+                artifactId = "droidspi-runtime"
                 from(components["release"])
                 artifact(javadocJar)
             }
