@@ -48,7 +48,7 @@ dependencyResolutionManagement {
 ```
 
 `gpr.user` 填 GitHub 用户名，`gpr.key` 填带 `read:packages` 权限的 token（GitHub Packages
-即使读取公开产物也需要认证）。这两个值放在**用户级** `~/.gradle/gradle.properties`，或直接导出
+始终需要 token 认证）。这两个值放在**用户级** `~/.gradle/gradle.properties`，或直接导出
 `GITHUB_ACTOR` / `GITHUB_TOKEN` 环境变量，不要提交到仓库。
 
 ```kotlin
