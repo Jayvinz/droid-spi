@@ -2,9 +2,8 @@ plugins {
     id("com.android.library")
     id("org.jetbrains.kotlin.android")
     id("maven-publish")
+    id("framework-publishing")
 }
-
-apply(from = "../gradle/framework-publishing.gradle.kts")
 
 android {
     namespace = "top.jayvin.android.spi"
