@@ -119,12 +119,12 @@ a legacy provider.
 
 ```kotlin
 plugins {
-    id("top.jayvin.droidspi") version "1.0.0-alpha03"
+    id("top.jayvin.droidspi") version "1.0.0-alpha01"
 }
 
 dependencies {
-    implementation("top.jayvin.droidspi:annotation:1.0.0-alpha03")
-    implementation("top.jayvin.droidspi:runtime:1.0.0-alpha03")
+    implementation("top.jayvin.droidspi:annotation:1.0.0-alpha01")
+    implementation("top.jayvin.droidspi:runtime:1.0.0-alpha01")
 }
 ```
 

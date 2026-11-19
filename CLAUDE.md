@@ -111,7 +111,7 @@ token), `SIGNING_KEY` (ASCII-armored private key), `SIGNING_PASSWORD`,
 enables signing only when `SIGNING_KEY` is present and disables signing tasks otherwise.
 
 To cut a release: bump `spiVersion` in `gradle.properties`, commit, create and push the tag
-(`git tag v1.0.0-alpha03 && git push origin v1.0.0-alpha03`).
+(`git tag v1.0.0-alpha01 && git push origin v1.0.0-alpha01`).
 
 ## Module layout
 
