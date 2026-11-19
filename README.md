@@ -1,16 +1,20 @@
 # Droid-spi
 
-Compile-time service discovery for Android. Declare providers with `@ServiceProvider` (or standard
+中文文档：[README.zh-CN.md](README.zh-CN.md)
+
+**Compile-time service discovery for Android.** Declare providers with `@ServiceProvider` (or standard
 `META-INF/services` files) and look them up at runtime **without reflection** — including providers
 that live in on-demand dynamic feature modules.
 
-- **No reflection, no APT/KSP** — providers are referenced through class literals.
-- **Per-variant tables** — `freeDebug`, `paidDebug`, … each get their own configuration.
-- **Dynamic delivery aware** — a provider is `MISSING` until its module is installed; the next
-  `load()` then works, with no `refresh()`.
+- **Zero reflection** — providers are referenced through class literals; no `Class.forName`, no
+  reflective construction, friendly to mobile runtime performance.
+- **No APT/KSP** — does not require time-consuming annotation-processing tasks such as
+  KAPT/KSP; this keeps large builds fast: incremental builds, build cache and isolated projects
+  are supported, and every variant / build type is handled.
+- **Keyed implementations** — one interface can have several implementations; select the one you
+  need by `key` at lookup time.
 - **Never throws** — unavailable lookups return `null` / an empty collection.
 
-中文文档：[README.zh-CN.md](README.zh-CN.md)
 
 ## Integration
 
@@ -19,26 +23,33 @@ custom repository or token is needed.
 
 ```kotlin
 // settings.gradle.kts — only if your build does not already declare them
-pluginManagement { repositories { gradlePluginPortal() } }
-dependencyResolutionManagement { repositories { mavenCentral() } }
+pluginManagement {
+    repositories {
+        gradlePluginPortal()   // plugin repository
+    }
+}
+dependencyResolutionManagement {
+    repositories {
+        mavenCentral()         // annotation / runtime repository
+    }
+}
 ```
 
 ```kotlin
 // module build.gradle.kts
 plugins {
+    // apply this plugin to every module that declares providers
     // supported module types: application, library, dynamic-feature
-    id("top.jayvin.droidspi") version "1.0.0-alpha03"
+    id("top.jayvin.droidspi") version "1.0.0-alpha01"
 }
 
 dependencies {
-    implementation("top.jayvin.droidspi:annotation:1.0.0-alpha03")
-    implementation("top.jayvin.droidspi:runtime:1.0.0-alpha03")
+    // provider modules only need annotation.
+    implementation("top.jayvin.droidspi:annotation:1.0.0-alpha01")
+    // application module, or anywhere else that uses ServiceLoader
+    implementation("top.jayvin.droidspi:runtime:1.0.0-alpha01")
 }
 ```
-
-Apply the plugin to every module that declares providers (and to the application module, which also
-aggregates them). The `runtime` dependency belongs in the application module; provider modules only
-need `annotation`.
 
 ## Declare a provider
 
@@ -101,11 +112,11 @@ key stays unique — duplicates fail the build.
 ## Learn more
 
 - Design and implementation: [docs/droid-spi-design.md](docs/droid-spi-design.md)
-  ([中文](docs/droid-spi-design.zh-CN.md))
+  ([Chinese](docs/droid-spi-design.zh-CN.md))
 - Articles: [Introducing Droid-spi](docs/articles/01-introducing-droid-spi.md) ·
   [How it works internally](docs/articles/02-how-droid-spi-works.md)
-  ([中文](docs/articles/01-introducing-droid-spi.zh-CN.md) ·
-  [中文](docs/articles/02-how-droid-spi-works.zh-CN.md))
+  ([Chinese](docs/articles/01-introducing-droid-spi.zh-CN.md) ·
+  [Chinese](docs/articles/02-how-droid-spi-works.zh-CN.md))
 
 ## Limitations
 

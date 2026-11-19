@@ -1,15 +1,15 @@
 # Droid-spi
 
-面向 Android 的编译期服务发现。用 `@ServiceProvider` 注解（或标准 `META-INF/services` 文件）声明
+English: [README.md](README.md)
+
+**面向 Android 的编译期服务发现。** 用 `@ServiceProvider` 注解（或标准 `META-INF/services` 文件）声明
 provider，运行时**零反射**查找——包括位于按需下载的 dynamic feature 模块中的实现。
 
-- **零反射、零 APT/KSP** —— provider 全部以类字面量引用。
-- **按变体生成配置表** —— `freeDebug`、`paidDebug`……每个变体各自一份。
-- **适配动态下发** —— 模块未安装时 provider 为 `MISSING`，安装后下一次 `load()` 即可用，无需
-  `refresh()`。
+- **零反射** —— provider 全部以类字面量引用，没有 `Class.forName` 与反射构造，对移动端运行时性能友好。
+- **零 APT/KSP** —— 不需要 APT、KSP 等耗时任务，对大型项目构建友好：支持增量构建、构建缓存、
+  isolated projects，完整支持多 variant 与 buildType。
+- **按 key 取用多实现** —— 一个接口可以有多个实现，查询时通过 `key` 指定所需实现。
 - **绝不抛异常** —— 不可用时返回 `null` / 空集合。
-
-English: [README.md](README.md)
 
 ## 集成
 
@@ -17,25 +17,33 @@ English: [README.md](README.md)
 
 ```kotlin
 // settings.gradle.kts —— 如果项目里还没有声明
-pluginManagement { repositories { gradlePluginPortal() } }
-dependencyResolutionManagement { repositories { mavenCentral() } }
+pluginManagement {
+    repositories {
+        gradlePluginPortal()   // 插件的仓库
+    }
+}
+dependencyResolutionManagement {
+    repositories {
+        mavenCentral()         // annotation 和 runtime 的仓库
+    }
+}
 ```
 
 ```kotlin
 // 模块 build.gradle.kts
 plugins {
+    // 每个声明 provider 的模块都要 apply 插件
     // 支持的模块类型：application、library、dynamic-feature
-    id("top.jayvin.droidspi") version "1.0.0-alpha03"
+    id("top.jayvin.droidspi") version "1.0.0-alpha01"
 }
 
 dependencies {
-    implementation("top.jayvin.droidspi:annotation:1.0.0-alpha03")
-    implementation("top.jayvin.droidspi:runtime:1.0.0-alpha03")
+    // provider 模块只需要 annotation
+    implementation("top.jayvin.droidspi:annotation:1.0.0-alpha01")
+    // application 模块，或其他需要用到 ServiceLoader 的地方
+    implementation("top.jayvin.droidspi:runtime:1.0.0-alpha01")
 }
 ```
-
-每个声明 provider 的模块都要 apply 插件；application 模块还需要 apply 插件来完成聚合。
-`runtime` 依赖放在 application 模块，provider 模块只需 `annotation`。
 
 ## 声明 provider
 
