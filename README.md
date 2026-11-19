@@ -49,7 +49,9 @@ dependencyResolutionManagement {
 ```
 
 `gpr.user` is your GitHub username and `gpr.key` a token with `read:packages` (GitHub Packages
-requires authentication even for public artifacts).
+requires authentication even for public artifacts). Put both in your **user-level**
+`~/.gradle/gradle.properties`, or export `GITHUB_ACTOR` / `GITHUB_TOKEN` — never commit them to
+the repository.
 
 ```kotlin
 // module build.gradle.kts
