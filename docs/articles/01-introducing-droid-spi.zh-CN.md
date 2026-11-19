@@ -116,7 +116,7 @@ dependencies {
 ```
 
 插件发布在 Gradle Plugin Portal，库发布在 Maven Central，使用标准仓库即可。源码仓库：
-[Garenzhou/android-spi](https://github.com/Garenzhou/android-spi)。
+[Jayvinz/droid-spi](https://github.com/Jayvinz/droid-spi)。
 
 环境要求：JDK 17、AGP 8.x、`minSdk 24`。
 

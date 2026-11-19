@@ -162,5 +162,5 @@ The implementation is intentionally small enough to read in an afternoon: a scan
 writer, a registry, and a facade. The hard part was not the code; it was discovering which Gradle
 and JVM assumptions do not survive dynamic delivery and configuration caching.
 
-Repository: [Garenzhou/android-spi](https://github.com/Garenzhou/android-spi).
+Repository: [Jayvinz/droid-spi](https://github.com/Jayvinz/droid-spi).
 Design document: [`docs/droid-spi-design.md`](../droid-spi-design.md).

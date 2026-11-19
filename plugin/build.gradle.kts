@@ -23,8 +23,8 @@ dependencies {
 }
 
 gradlePlugin {
-    website.set("https://github.com/Garenzhou/android-spi")
-    vcsUrl.set("https://github.com/Garenzhou/android-spi")
+    website.set("https://github.com/Jayvinz/droid-spi")
+    vcsUrl.set("https://github.com/Jayvinz/droid-spi")
     plugins {
         create("spi") {
             id = "top.jayvin.droidspi"

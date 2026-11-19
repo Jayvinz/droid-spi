@@ -136,5 +136,5 @@ ASM `ClassWriter` 的 `getCommonSuperClass` 也被强制返回 `java/lang/Object
 实现刻意做到一个下午就能读完：一个扫描器、一个 ASM writer、一个注册表和一个门面。困难的部分不是
 代码，而是找出哪些 Gradle 与 JVM 的假设无法在动态下发和配置缓存下成立。
 
-仓库：[Garenzhou/android-spi](https://github.com/Garenzhou/android-spi)。
+仓库：[Jayvinz/droid-spi](https://github.com/Jayvinz/droid-spi)。
 设计文档：[`docs/droid-spi-design.zh-CN.md`](../droid-spi-design.zh-CN.md)。

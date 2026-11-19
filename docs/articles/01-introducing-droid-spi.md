@@ -127,7 +127,7 @@ dependencies {
 
 The plugin is published to the Gradle Plugin Portal and the libraries to Maven Central, so the
 standard repositories are enough. Source repository:
-[Garenzhou/android-spi](https://github.com/Garenzhou/android-spi).
+[Jayvinz/droid-spi](https://github.com/Jayvinz/droid-spi).
 
 Requirements: JDK 17, AGP 8.x, `minSdk 24`.
 

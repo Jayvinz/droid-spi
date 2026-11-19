@@ -1,6 +1,6 @@
 # droid-spi
 
-[![CI](https://github.com/Garenzhou/android-spi/actions/workflows/ci.yml/badge.svg)](https://github.com/Garenzhou/android-spi/actions/workflows/ci.yml)
+[![CI](https://github.com/Jayvinz/droid-spi/actions/workflows/ci.yml/badge.svg)](https://github.com/Jayvinz/droid-spi/actions/workflows/ci.yml)
 
 Compile-time service discovery for Android. Declare providers with `@ServiceProvider` or plain
 `META-INF/services` files; a Gradle plugin generates a fixed-name configuration class that the

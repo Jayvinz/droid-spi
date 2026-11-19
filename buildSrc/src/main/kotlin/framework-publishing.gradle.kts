@@ -45,7 +45,7 @@ publishing {
                 "Compile-time SPI for Android: scans @ServiceProvider and generates a " +
                     "fixed-FQN provider configuration class",
             )
-            url.set("https://github.com/Garenzhou/android-spi")
+            url.set("https://github.com/Jayvinz/droid-spi")
             licenses {
                 license {
                     name.set("Apache License 2.0")
@@ -54,14 +54,14 @@ publishing {
             }
             developers {
                 developer {
-                    id.set("Garenzhou")
+                    id.set("Jayvinz")
                     name.set("Jayvin")
                 }
             }
             scm {
-                url.set("https://github.com/Garenzhou/android-spi")
-                connection.set("scm:git:git://github.com/Garenzhou/android-spi.git")
-                developerConnection.set("scm:git:ssh://git@github.com/Garenzhou/android-spi.git")
+                url.set("https://github.com/Jayvinz/droid-spi")
+                connection.set("scm:git:git://github.com/Jayvinz/droid-spi.git")
+                developerConnection.set("scm:git:ssh://git@github.com/Jayvinz/droid-spi.git")
             }
         }
     }
