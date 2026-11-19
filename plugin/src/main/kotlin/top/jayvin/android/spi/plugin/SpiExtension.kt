@@ -39,16 +39,45 @@ internal const val META_INF_SERVICES = "META-INF/services/"
 internal fun String.toInternalName(): String = replace('.', '/')
 
 /**
- * Internal root-project collector: each module registers its buildType-specific scan task here,
- * and the app module takes them all at `projectsEvaluated`.
+ * One module variant's scan output and the identity used for aggregation.
  *
- * The key is buildType rather than variant name because the provider configuration only needs
- * to aggregate per buildType: one table each for `debug` / `release`. The cost is that
- * flavor-exclusive services are not collected; multi-flavor projects must align per variant name.
+ * Aggregation happens per **variant**, not per build type: flavors of the same build type compile
+ * different sources and therefore contribute different providers.
  */
-abstract class SpiRootExtension {
-    /** Mapping from buildType to the manifest files produced by each module's scan task. */
-    val manifests: MutableMap<String, MutableList<Provider<RegularFile>>> = LinkedHashMap()
+internal data class SpiVariantEntry(
+    val buildType: String?,
+    /** Flavor dimensions in dimension order, `(dimension, value)`; empty when the module has no flavors. */
+    val flavors: List<Pair<String, String>>,
+    val manifest: Provider<RegularFile>,
+) {
+    /**
+     * Whether this module variant feeds the application variant identified by
+     * ([buildType], [applicationFlavors]).
+     *
+     * The build type must match. Every flavor dimension declared by **this module** must also
+     * exist on the application variant with the same value; a module that declares no flavors
+     * (or fewer dimensions) is compatible with every application flavor of that build type.
+     * A module dimension missing from the application variant is treated as incompatible —
+     * such a dependency would not be variant-matched by AGP either.
+     */
+    fun isCompatibleWith(
+        buildType: String?,
+        applicationFlavors: Map<String, String>,
+    ): Boolean {
+        if (this.buildType != buildType) return false
+        return this.flavors.all { (dimension, value) ->
+            applicationFlavors[dimension] == value
+        }
+    }
+}
+
+/**
+ * Internal root-project collector: each module registers its per-variant scan tasks here, and
+ * the app module takes the compatible subset at `projectsEvaluated`.
+ */
+internal abstract class SpiRootExtension {
+    /** Every registered variant entry, across modules. */
+    val entries: MutableList<SpiVariantEntry> = mutableListOf()
 }
 
 /** Returns the root project's SPI collector, creating it on first use. */

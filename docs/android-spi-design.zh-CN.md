@@ -77,14 +77,15 @@ AAB 的依赖方向是单向的：动态功能模块依赖 base，而 base 在�
 ## 2. 总体架构
 
 ```
-┌─ Compile time (per module) ──────┐   ┌─ Aggregation (app only) ──────┐   ┌─ Runtime ────────────┐
-│ src/main/**/*.kt|java            │   │  services.txt (all modules)   │   │ Application.onCreate │
-│   ↓ lexical scan + type resolve  │   │   ↓ merge + conflict check    │   │   ↓ initialize()     │
-│ src/main/resources/META-INF/     │   │ ServiceConfiguration.class    │──▶│   ↓ load() → READY   │
-│   services/**  ↓ standard SPI    │──▶│   ↓ toAppend(CLASSES)         │   │   ↓ INSTALLED        │
-│ services.txt (service/provider/  │   │ base dex → APK/AAB            │   │ next load() → READY  │
-│           key/factory)           │   │                               │   │                      │
-└──────────────────────────────────┘   └───────────────────────────────┘   └──────────────────────┘
+┌─ Scan (per module variant) ──────────┐   ┌─ Aggregate (app, per variant) ──┐   ┌─ Runtime ──────────────┐
+│ sources = src/main + flavor         │   │ compatible module manifests    │   │ Application.onCreate  │
+│ / build-type overlays               │   │ ↓ merge + conflict check       │   │ ↓ initialize()        │
+│ (*.kt | *.java)                     │   │ ServiceConfiguration.class     │   │ ↓ load() → READY      │
+│ META-INF/services/**                │   │ ↓ toAppend(CLASSES)            │──▶│ ↓ INSTALLED           │
+│ ↓ lexical scan                      │   │ base dex → APK/AAB             │   │ next load() → READY   │
+│ services.txt                        │   └───────────────────────────────┘   └──────────────────────┘
+│ service/provider/key/factory        │
+└────────────────────────────────────┘
 ```
 
 （图中标签保持英文，避免等宽字体下中英混排导致对齐错乱。）
@@ -191,7 +192,7 @@ your-module/src/main/resources/META-INF/services/com.example.core.api.LegacyServ
 
 | 项 | 处理 |
 |---|---|
-| 扫描目录 | `src/main/resources` 加入 `sourceDirs`；也兼容 `src/main/java` / `src/main/kotlin` 下任意深度的 `META-INF/services/` |
+| 扫描目录 | 取该 variant 的全部静态源码目录（`variant.sources.java` / `kotlin` / `resources`），即 `src/main` 加上 build type / flavor 叠加目录；其下任意深度的 `META-INF/services/` 都识别 |
 | 开关 | `spi { scanMetaInfServices = true }`，默认开启 |
 | 范围 | 只读这些文本文件；**不解压 jar / aar、不扫 class**，延续 C3 |
 | `key` | 标准 SPI 无此概念 → `""`（默认变体） |
@@ -202,7 +203,7 @@ your-module/src/main/resources/META-INF/services/com.example.core.api.LegacyServ
 每条配置映射成 `ProviderEntry(service, provider, "", "")`，之后与注解来源完全同路：
 进入模块清单 → 聚合校验 → 生成 class 的 `providerOf` / `newProvider`。运行时无差别。
 
-前置条件：该模块必须 apply `top.jayvin.android.spi` 插件（否则没有 `{buildType}ScanProviders` 任务）。
+前置条件：该模块必须 apply `top.jayvin.android.spi` 插件（否则没有 `{variantName}ScanProviders` 任务）。
 `modules/core-common` 就是只有 SPI 配置、没有注解的最小示例 —— 它的清单输出为：
 
 ```
@@ -211,7 +212,8 @@ com.example.core.api.LegacyService  com.example.core.common.LegacyServiceImpl
 
 ### 3.4 清单与聚合
 
-每个模块每个 build type 一个 `ScanProvidersTask`，输出确定性清单（排序、无时间戳）：
+每个模块每个 **variant** 一个 `ScanProvidersTask`（`freeDebugScanProviders`、`paidReleaseScanProviders` 等），
+输出确定性清单（排序、无时间戳）：
 
 ```
 com.example.core.api.AccountService	com.example.feature.account.AccountServiceImpl		create
@@ -220,8 +222,11 @@ com.example.core.api.AccountService	com.example.feature.account.GuestAccountServ
 
 四列：`service \t provider \t key \t factory`（`key` 为空串表示默认变体，`factory` 为空表示走无参构造）。
 
-`GenerateServiceConfigurationTask` 在 app 模块合并全部清单：校验 `(service, key)` 全局唯一
-（冲突直接报错并列出两个 provider），然后生成 `ServiceConfiguration` 字节码。
+`GenerateServiceConfigurationTask` 按 app 的每个 variant 运行，输入是所有**匹配**的模块 variant 清单：
+build type 相同，且模块声明的每个 flavor 维度都与 app variant 取值一致（无 flavor 的模块匹配所有 flavor）。
+因此 `freeDebug` 与 `paidDebug` 得到互不相交的表，每个 variant 各自把生成的 class 追加到自己的
+`ScopedArtifact.CLASSES`。随后校验 `(service, key)` 全局唯一（冲突直接报错并列出两个 provider），
+再生成 `ServiceConfiguration` 字节码。
 
 两个任务都标注了 `@CacheableTask`；输入输出确定性，clean build 时可由 Gradle 从构建缓存恢复。
 
@@ -243,7 +248,9 @@ public Class providerOf(Class service, String key) {
 如果这些引用进了 `<clinit>`，配置类自己被标记 erroneous，之后即使模块装好也永远是
 `Could not initialize class` —— 整表报废且不可恢复。
 
-**② `services()` 里只放接口。** 接口按约定下沉到 base，永远可解析。
+**② `services()` 里只放接口，且每个条目一个元素。** 它与 `keys()` 按下标一一对应：
+同一接口注册 N 个 key 就在 `services()` 中出现 N 次（`ProviderRegistry` 按接口分组、按下标取 key）。
+接口按约定下沉到 base，永远可解析。
 
 **③ 走 `@ProviderFactory` 时生成 `INVOKESTATIC`**，而不是 `Method.invoke`：
 
@@ -267,13 +274,14 @@ variant.artifacts.forScope(ScopedArtifacts.Scope.PROJECT)
 
 **为什么是 `toAppend` 而不是 `toTransform`**：生成任务的输入是纯文本清单，不读
 `ScopedArtifact.CLASSES`，只往 classes 里追加一个 class，因此不存在"边读边写"的循环依赖，
-也不需要把所有输入 class 重新打包一遍。
+也不需要把所有输入 class 重新打包一遍。该接线对**每个 variant** 各执行一次，而不是每个 build type
+一次：flavor variant 共享 build type，但每个 variant 都需要自己的 classes 产物里有生成类。
 
 **跨工程收集用 `projectsEvaluated` 而不是配置期 `findByName`**：Gradle 按 settings 顺序逐个
-evaluate 工程，app 可能早于 feature 模块被配置，此时 `findByName("DebugScanProviders")`
-返回 null 会静默漏掉整个模块。每个模块把自己的 `Provider<RegularFile>` 登记到 root extension，
-app 在 `projectsEvaluated` 时一次性接上——此时所有工程都已配置完成，且 Provider 携带 producer
-依赖，任务图里自动生成 scan → generate 的边。
+evaluate 工程，app 可能早于 feature 模块被配置，此时 `findByName("FreeDebugScanProviders")`
+返回 null 会静默漏掉整个模块。每个模块把自己的按 variant `Provider<RegularFile>` 登记到 root
+extension，app 在 `projectsEvaluated` 时一次性接上所有匹配条目——此时所有工程都已配置完成，
+且 Provider 携带 producer 依赖，任务图里自动生成 scan → generate 的边。
 
 ---
 
@@ -476,9 +484,9 @@ WMRouter 的 `ServiceLoader.put()` 是 public static，可以手工接入动态�
 |---|---|---|
 | 接口必须在 base | `services()` 的接口字面量若来自动态模块，整表失效 | 约定 + 代码评审（暂无构建期归属校验） |
 | 接口未 import 时猜错包 | 全限定名错误不会在构建期暴露 | 存在 `import a.b.*` 时直接构建失败；其余要求显式 import |
-| 只扫 `src/main` | flavor 目录、自定义 sourceSet 未覆盖；`META-INF/services` 也只认源码目录、不读依赖产物 | 已记录的限制；后续可从 `variant.sources` 推导扫描范围 |
+| 扫描范围 | 按 variant 扫描其声明的静态源码（`src/main` + build type / flavor 叠加目录，来自 `variant.sources`）；生成的源码目录跳过；`META-INF/services` 也只认源码目录、不读依赖产物 | 已记录的行为；demo 的四变体自检验证覆盖 |
 | `@ProviderFactory` 签名未校验 | 参数个数与返回类型未做构建期校验，违反时描述符不匹配、运行时才失败 | 工厂保持无参且返回所在类自身；违反时首次加载 provider 会抛 `NoSuchMethodError` |
-| 按 buildType 聚合 | flavor 独有服务不会进表 | 多 flavor 工程需按 variant 对齐 |
+| 按 variant 聚合 | 模块 variant 只有 build type 相同、且声明的 flavor 维度都与 app variant 一致时才被聚合；app 未声明的维度对应的依赖会被跳过（与 AGP 的匹配一致） | 已记录的行为；动态特性模块必须声明 base 模块的 flavor 维度 |
 | 不支持嵌套类 / `typealias` | 扫描器按顶层类型解析 | 已记录的限制；service 请声明为顶层接口 |
 | R8 missing class | base 引用未安装模块的类会告警 | 按模块补 `-dontwarn`（示例已给） |
 | 非 Play 渠道 | 框架没有内建安装通道，split 可见性取决于宿主 | 由宿主实现自己的分发通道；已打进包里的 provider 保持 READY |
@@ -494,9 +502,11 @@ WMRouter 的 `ServiceLoader.put()` 是 public static，可以手工接入动态�
 |---|---|
 | 工具链编译 | `./gradlew :plugin:compileKotlin` ✅ |
 | 运行时单测 | `./gradlew :runtime:testDebugUnitTest` → JVM 上 7 个测试全部通过（未装返回 null、安装后无需 refresh 直接成功、每次 load 重试、DEAD 不重试、未注册 key、stream 不实例化等） |
-| 示例 APK | `:app:assembleDebug` ✅；manifest 确认 Application；配置类由 `DebugScanProviders` / `DebugGenerateServiceConfiguration` 生成并打进 base dex |
-| 示例 AAB | `:app:bundleDebug` ✅，`base` / `feature_camera` 分包 |
-| 增量构建 | 第二次 `:app:assembleDebug` 时所有 `ScanProviders` / `GenerateServiceConfiguration` 任务均为 UP-TO-DATE，确认可缓存任务接线生效 |
-| 生成字节码 | `javap -c` 确认：**无 `<clinit>`**、`providerOf` 只有 `ldc`、`newProvider` 对 `@ProviderFactory` 用 `INVOKESTATIC` |
+| 示例 APK | `:app:assembleFreeDebug` ✅；manifest 确认 Application；配置类由 `FreeDebugScanProviders` / `FreeDebugGenerateServiceConfiguration` 生成并打进 base dex |
+| 示例 AAB | `:app:bundleFreeDebug` ✅，`base` / `feature_camera` 分包 |
+| 变体矩阵 | `assembleFreeDebug` / `assemblePaidDebug` / `assembleFreeRelease` / `assemblePaidRelease` 四个组合全部 ✅（clean 后重建亦通过）；`javap` + `dexdump` 确认每个 APK 只含自己 flavor 的 `ChannelServiceImpl`，debug 包另有 `DebugServiceImpl`，release 包没有 |
+| 真机 UI 测试 | 四个 APK 并存安装于小米 M2012K11C（Android 13）；每个自检页均为 `SELF-CHECK PASS 12/12`；截图见 `build/ui-test/`；点击"Re-run checks"与"Camera module"无崩溃（侧载 APK 无 Play 商店，split install 以 -14 错误优雅失败） |
+| 增量构建 | 第二次 `:app:assembleFreeDebug` 时所有 `ScanProviders` / `GenerateServiceConfiguration` 任务均为 UP-TO-DATE，确认可缓存任务接线生效 |
+| 生成字节码 | `javap -c` 确认：**无 `<clinit>`**、`providerOf` 只有 `ldc`、`newProvider` 对 `@ProviderFactory` 用 `INVOKESTATIC`；`services()` / `keys()` 按下标一一对应（debug 8 条、release 7 条） |
 | 分包正确性 | `dexdump` 确认 `CameraServiceImpl` 只在 `feature_camera/dex`，base dex 只有引用 |
 | 标准 SPI 配置 | `modules/core-common` 的 `META-INF/services/...LegacyService` 被扫描进清单（`LegacyService → LegacyServiceImpl`），生成字节码含 `ldc LegacyServiceImpl` 与 `new LegacyServiceImpl`，`MainActivity` 调用 `ServiceLoader.load(LegacyService::class.java)` 返回非空 |

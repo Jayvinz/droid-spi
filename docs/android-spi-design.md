@@ -82,14 +82,15 @@ services return `null`; an extra `key` and `ProviderState` are present.
 ## 2. Overall architecture
 
 ```
-┌─ Compile time (per module) ──────┐   ┌─ Aggregation (app only) ──────┐   ┌─ Runtime ────────────┐
-│ src/main/**/*.kt|java            │   │  services.txt (all modules)   │   │ Application.onCreate │
-│   ↓ lexical scan + type resolve  │   │   ↓ merge + conflict check    │   │   ↓ initialize()     │
-│ src/main/resources/META-INF/     │   │ ServiceConfiguration.class    │──▶│   ↓ load() → READY   │
-│   services/**  ↓ standard SPI    │──▶│   ↓ toAppend(CLASSES)         │   │   ↓ INSTALLED        │
-│ services.txt (service/provider/  │   │ base dex → APK/AAB            │   │ next load() → READY  │
-│           key/factory)           │   │                               │   │                      │
-└──────────────────────────────────┘   └───────────────────────────────┘   └──────────────────────┘
+┌─ Scan (per module variant) ──────────┐   ┌─ Aggregate (app, per variant) ──┐   ┌─ Runtime ──────────────┐
+│ sources = src/main + flavor         │   │ compatible module manifests    │   │ Application.onCreate  │
+│ / build-type overlays               │   │ ↓ merge + conflict check       │   │ ↓ initialize()        │
+│ (*.kt | *.java)                     │   │ ServiceConfiguration.class     │   │ ↓ load() → READY      │
+│ META-INF/services/**                │   │ ↓ toAppend(CLASSES)            │──▶│ ↓ INSTALLED           │
+│ ↓ lexical scan                      │   │ base dex → APK/AAB             │   │ next load() → READY   │
+│ services.txt                        │   └───────────────────────────────┘   └──────────────────────┘
+│ service/provider/key/factory        │
+└────────────────────────────────────┘
 ```
 
 The three responsibilities are cleanly separated:
@@ -205,7 +206,7 @@ the path after `META-INF/services/`). Constraints and mapping:
 
 | Item | Handling |
 |---|---|
-| Scan directories | `src/main/resources` is added to `sourceDirs`; also accepts `META-INF/services/` at any depth under `src/main/java` / `src/main/kotlin` |
+| Scan directories | Every static source directory of the variant (`variant.sources.java` / `kotlin` / `resources`), i.e. `src/main` plus build-type and flavor overlays; `META-INF/services/` is accepted at any depth under them |
 | Switch | `spi { scanMetaInfServices = true }`, enabled by default |
 | Scope | Reads only these text files; **does not unzip jars / aars, does not scan classes**, preserving C3 |
 | `key` | Standard SPI has no such concept → `""` (default variant) |
@@ -218,7 +219,7 @@ the same path as annotation entries: module manifest → aggregation validation 
 `providerOf` / `newProvider`. Runtime behavior is identical.
 
 Prerequisite: the module must apply the `top.jayvin.android.spi` plugin (otherwise there is no
-`{buildType}ScanProviders` task). `modules/core-common` is the minimal example with SPI config only and
+`{variantName}ScanProviders` task). `modules/core-common` is the minimal example with SPI config only and
 no annotations — its manifest output is:
 
 ```
@@ -227,8 +228,8 @@ com.example.core.api.LegacyService  com.example.core.common.LegacyServiceImpl
 
 ### 3.4 Manifests and aggregation
 
-Each module has one `ScanProvidersTask` per build type, producing a deterministic manifest
-(sorted, no timestamps):
+Each module has one `ScanProvidersTask` per **variant** (`freeDebugScanProviders`,
+`paidReleaseScanProviders`, …), producing a deterministic manifest (sorted, no timestamps):
 
 ```
 com.example.core.api.AccountService	com.example.feature.account.AccountServiceImpl		create
@@ -238,9 +239,13 @@ com.example.core.api.AccountService	com.example.feature.account.GuestAccountServ
 Four columns: `service \t provider \t key \t factory` (an empty `key` means the default
 variant; an empty `factory` means no-arg construction).
 
-`GenerateServiceConfigurationTask` merges all manifests in the app module: it validates that
-`(service, key)` is globally unique (a conflict fails the build and lists both providers),
-then generates the `ServiceConfiguration` bytecode.
+`GenerateServiceConfigurationTask` runs per application variant and takes the manifests of every
+compatible module variant: same build type, and every flavor dimension declared by the module
+matches the application variant's value (a module without flavors matches every application
+flavor). `freeDebug` and `paidDebug` therefore get disjoint tables, and each variant appends its
+own generated class to its own `ScopedArtifact.CLASSES`. It validates that `(service, key)` is
+globally unique (a conflict fails the build and lists both providers), then generates the
+`ServiceConfiguration` bytecode.
 
 Both tasks are annotated `@CacheableTask`; their deterministic inputs and outputs let Gradle
 restore them from the build cache on clean builds.
@@ -264,8 +269,9 @@ If those references went into `<clinit>`, the configuration class itself would b
 erroneous, and even after the module is installed it would forever be
 `Could not initialize class` — the whole table is lost irreversibly.
 
-**② `services()` contains interfaces only.** Interfaces are by convention pulled down into
-base and are always resolvable.
+**② `services()` contains interfaces only, one element per entry.** It is index-aligned with
+`keys()`: a service with N keys appears N times (`ProviderRegistry` groups by service and reads
+keys by index). Interfaces are by convention pulled down into base and are always resolvable.
 
 **③ `@ProviderFactory` generates `INVOKESTATIC`**, not `Method.invoke`:
 
@@ -291,15 +297,17 @@ variant.artifacts.forScope(ScopedArtifacts.Scope.PROJECT)
 
 **Why `toAppend` instead of `toTransform`**: the generate task's input is plain-text manifests;
 it does not read `ScopedArtifact.CLASSES` and only appends one class to classes. Therefore there
-is no read-while-write cycle and no need to repackage all input classes.
+is no read-while-write cycle and no need to repackage all input classes. The operation is
+registered for **every variant**, not once per build type: flavor variants share a build type and
+each one needs the generated class in its own classes artifact.
 
 **Cross-project collection uses `projectsEvaluated` rather than configuration-time
 `findByName`**: Gradle evaluates projects in settings order, so app may be configured before
-feature modules; at that time `findByName("DebugScanProviders")` returns null and silently
-drops the whole module. Each module registers its `Provider<RegularFile>` on the root
-extension, and app wires them all at `projectsEvaluated` — by then every project is
-configured, and the Provider carries its producer dependency, so the scan → generate edge is
-created automatically in the task graph.
+feature modules; at that time `findByName("FreeDebugScanProviders")` returns null and silently
+drops the whole module. Each module registers its per-variant `Provider<RegularFile>` on the
+root extension, and the app wires the compatible entries at `projectsEvaluated` — by then every
+project is configured, and the Provider carries its producer dependency, so the scan → generate
+edge is created automatically in the task graph.
 
 ---
 
@@ -531,9 +539,9 @@ but its table stores `Class` literals and initializes once (`mHasInit`); once an
 |---|---|---|
 | Interfaces must live in base | If an interface literal in `services()` comes from a dynamic module, the whole table breaks | Convention + code review (no build-time ownership check yet) |
 | Wrong package when the interface is not imported | A wrong FQN is not exposed at build time | Fail the build when `import a.b.*` exists; otherwise require explicit imports |
-| Only `src/main` is scanned | Flavor directories and custom source sets are not covered; `META-INF/services` is only recognized in source dirs, not dependency artifacts | Documented limitation; future work: derive sources from `variant.sources` |
+| Scan scope | Every variant's declared static sources are scanned (`src/main` + build-type / flavor overlays from `variant.sources`); generated source directories are skipped; `META-INF/services` is only recognized in source dirs, not dependency artifacts | Documented behavior; the demo's four-variant self-check covers it |
 | `@ProviderFactory` signature unchecked | Argument count and return type are not validated; a mismatch produces a descriptor that fails at runtime | Keep factories no-arg and returning the enclosing type; violations surface as `NoSuchMethodError` when the provider is first loaded |
-| Aggregation per buildType | Flavor-exclusive services do not enter the table | Multi-flavor projects must align per variant |
+| Per-variant aggregation | A module variant is aggregated only when its build type matches and all of its flavor dimensions match the app variant; a dependency with a dimension the app does not declare is skipped (as AGP would) | Documented behavior; dynamic features must declare the base module's flavor dimensions |
 | Nested classes / `typealias` unsupported | The scanner resolves top-level types | Documented limitation; declare services as top-level interfaces |
 | R8 missing classes | Base referencing uninstalled module classes warns | Add `-dontwarn` per module (sample provided) |
 | Non-Play channels | The framework has no built-in install channel; split visibility depends on the host | Host implements its own delivery channel; providers packaged in the APK remain READY |
@@ -547,9 +555,11 @@ but its table stores `Class` literals and initializes once (`mHasInit`); once an
 |---|---|
 | Toolchain compile | `./gradlew :plugin:compileKotlin` ✅ |
 | Runtime unit tests | `./gradlew :runtime:testDebugUnitTest` → 7 passed on the JVM (returns null while uninstalled, succeeds after install without refresh, retries on every load, DEAD not retried, unknown key, stream does not instantiate, etc.) |
-| Sample APK | `:app:assembleDebug` ✅; manifest confirms the Application; the configuration class is generated by `DebugScanProviders` / `DebugGenerateServiceConfiguration` and packed into the base dex |
-| Sample AAB | `:app:bundleDebug` ✅, `base` / `feature_camera` splits |
-| Incremental build | A second `:app:assembleDebug` leaves all `ScanProviders` / `GenerateServiceConfiguration` tasks UP-TO-DATE, confirming the cacheable task wiring |
-| Generated bytecode | `javap -c` confirms: **no `<clinit>`**, `providerOf` only uses `ldc`, `newProvider` uses `INVOKESTATIC` for `@ProviderFactory` |
+| Sample APK | `:app:assembleFreeDebug` ✅; manifest confirms the Application; the configuration class is generated by `FreeDebugScanProviders` / `FreeDebugGenerateServiceConfiguration` and packed into the base dex |
+| Sample AAB | `:app:bundleFreeDebug` ✅, `base` / `feature_camera` splits |
+| Variant matrix | All four of `assembleFreeDebug` / `assemblePaidDebug` / `assembleFreeRelease` / `assemblePaidRelease` ✅ (also from `clean`); `javap` + `dexdump` show each APK contains only its flavor's `ChannelServiceImpl`, debug APKs additionally contain `DebugServiceImpl`, release APKs do not |
+| On-device UI test | All four APKs installed side by side on a Xiaomi M2012K11C (Android 13); every self-check screen reports `SELF-CHECK PASS 12/12`; screenshots in `build/ui-test/`; tapping "Re-run checks" and "Camera module" does not crash (split install fails gracefully with error -14 on a sideloaded APK) |
+| Incremental build | A second `:app:assembleFreeDebug` leaves all `ScanProviders` / `GenerateServiceConfiguration` tasks UP-TO-DATE, confirming the cacheable task wiring |
+| Generated bytecode | `javap -c` confirms: **no `<clinit>`**, `providerOf` only uses `ldc`, `newProvider` uses `INVOKESTATIC` for `@ProviderFactory`; `services()` / `keys()` are index-aligned (8 entries in debug, 7 in release) |
 | Split correctness | `dexdump` confirms `CameraServiceImpl` only exists in `feature_camera/dex`; base dex only has references |
 | Standard SPI config | `modules/core-common`'s `META-INF/services/...LegacyService` is scanned into the manifest (`LegacyService → LegacyServiceImpl`); generated bytecode contains `ldc LegacyServiceImpl` and `new LegacyServiceImpl`; `MainActivity` calls `ServiceLoader.load(LegacyService::class.java)` and gets a non-null instance |

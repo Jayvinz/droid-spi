@@ -34,8 +34,9 @@ User documentation: `README.md`
 # not as project dependencies.
 ./gradlew :annotation:publish :runtime:publish :plugin:publish
 
-./gradlew :app:assembleDebug      # demo APK
-./gradlew :app:bundleDebug        # demo AAB (includes the feature_camera split)
+./gradlew :app:assembleFreeDebug   # one variant (flavors: free / paid; build types: debug / release)
+./gradlew :app:assembleFreeDebug :app:assemblePaidDebug :app:assembleFreeRelease :app:assemblePaidRelease
+./gradlew :app:bundleFreeDebug     # demo AAB (includes the feature_camera split)
 
 # Runtime unit tests (all)
 ./gradlew :runtime:testDebugUnitTest
@@ -49,10 +50,10 @@ fresh clone fails**; run the publish command above first. `plugin` has no test s
 the `runtime` tests are plain JVM unit tests that use a fake `ProviderConfiguration` to
 simulate "module not installed", so no device or emulator is needed.
 
-Verify the generated artifact:
+Verify the generated artifact (per variant; the path uses the variant name):
 
 ```bash
-javap -p -c app/build/intermediates/classes/debug/DebugGenerateServiceConfiguration/top/jayvin/android/spi/generated/ServiceConfiguration.class
+javap -p -c app/build/intermediates/classes/freeDebug/FreeDebugGenerateServiceConfiguration/top/jayvin/android/spi/generated/ServiceConfiguration.class
 ```
 
 ## Module layout
@@ -65,7 +66,7 @@ Single Gradle build; `settings.gradle.kts` includes everything:
 | `runtime/` | `ServiceLoader` facade and `ProviderRegistry` on-demand probing (Android Library, no Play Core dependency) |
 | `plugin/` | Gradle plugin: `SpiPlugin`, scan tasks, ASM generator, `java-gradle-plugin` |
 | `configuration-stub/` | compileOnly placeholder class for runtime (same `ServiceConfiguration` name; not published, not packaged) |
-| `app/` | Demo application module; the only module registering the generate task; its Application calls `ServiceLoader.initialize()` |
+| `app/` | Demo application module; the only module registering the generate task; its Application calls `ServiceLoader.initialize()`. It declares the `channel` flavor dimension (`free` / `paid`) and its self-check screen (`MainActivity`) is the on-device UI test matrix |
 | `modules/core-api/` | All service **interfaces** (must live in base) |
 | `modules/core-common/` | Resident library example that only has `META-INF/services` configuration |
 | `modules/feature-*/` | Provider implementations; `feature_camera` is an on-demand dynamic module |
@@ -73,22 +74,29 @@ Single Gradle build; `settings.gradle.kts` includes everything:
 
 ## Compile-time pipeline
 
-1. **Per module** (library / dynamic-feature / application), `SpiPlugin` registers
-   `{buildType}ScanProviders` (e.g. `debugScanProviders`). It scans `src/main/java` and
-   `src/main/kotlin` (plus `src/main/resources` when `scanMetaInfServices=true`) and writes
-   `build/generated/spi/{buildType}/services.txt`.
+1. **Per module, per variant** (library / dynamic-feature / application), `SpiPlugin` registers
+   `{variantName}ScanProviders` (e.g. `freeDebugScanProviders`). Source directories come from
+   `variant.sources` (`java.static`, `kotlin.static`, plus `resources.static` when
+   `scanMetaInfServices=true`), so `src/main` **and** the variant's build-type / flavor overlays
+   are scanned. Output is `build/generated/spi/{variantName}/services.txt`.
    Manifest format: `service \t provider \t key \t factory` (an empty key means the default variant).
-2. **Application modules only** register `{buildType}GenerateServiceConfiguration`. It reads
-   every module's manifest, validates `(service, key)` uniqueness (a duplicate fails the build),
-   and generates the class with ASM.
-3. Manifests are collected in the root project's `spiRoot` extension; inputs are wired to the
-   generate task after `projectsEvaluated`, avoiding configuration-time cross-project evaluation
-   order issues. The generate task outputs bytecode via `toAppend(ScopedArtifact.CLASSES)` and
-   does not read the `CLASSES` input, so the task graph has no cycle.
+2. **Application modules only** register `{variantName}GenerateServiceConfiguration` per variant.
+   It reads the manifests of every compatible module variant, validates `(service, key)`
+   uniqueness (a duplicate fails the build), and generates the class with ASM.
+3. Each module registers its per-variant entries (buildType, flavor dimensions, manifest) in
+   the root project's `spiRoot` extension as a flat list. After
+   `projectsEvaluated` the generate task takes the entries whose buildType matches and whose
+   flavor dimensions all match the application variant (a module without flavors matches every
+   application flavor). The generate task outputs bytecode via `toAppend(ScopedArtifact.CLASSES)`
+   on **its own variant** and does not read the `CLASSES` input, so the task graph has no cycle.
 
-**Aggregation is per buildType, not per variant**: one table for `debug` and one for `release`,
-shared by flavors. Multi-flavor projects must align per variant.
-Scanning only covers `src/main`; flavor-specific directories such as `src/debug/` are not included.
+**Aggregation is per variant, not per build type**: `freeDebug` and `paidDebug` compile disjoint
+flavor sources and get separate tables and separate generated classes. Every variant wires its
+own `toAppend`; wiring only the first variant of a build type would silently leave the other
+flavors without `ServiceConfiguration` at runtime.
+
+Dynamic feature modules depend on `:app`, so if `:app` declares flavor dimensions they must
+declare the same dimensions and flavor names; otherwise Gradle cannot choose a base variant.
 
 ## Runtime path
 
@@ -132,6 +140,11 @@ These are correctness red lines, not style preferences:
    `@ServiceProvider(service = X::class)`.
 6. The default variant key is the empty string (`ServiceLoader.DEFAULT_KEY == ""`); the key
    parameter is non-null throughout.
+7. **`services()` and `keys()` are index-aligned, one element per entry**: a service with N keys
+   appears N times in `services()`. `ProviderRegistry` groups by service and reads keys by index.
+   Emitting each distinct interface once breaks startup with
+   `Broken provider configuration: services=X keys=Y` (the runtime unit test's fake configuration
+   deliberately returns the interface twice per key and documents the expected shape).
 
 ## Scanner boundaries (read before changing `SourceScanner`)
 
@@ -149,7 +162,14 @@ These are correctness red lines, not style preferences:
 ## Known pitfalls
 
 - Changing plugin source without republishing: the demo still consumes the old version from
-  local-repo, so the change appears to "do nothing".
+  local-repo, so the change appears to "do nothing". Forgetting to rebuild the app after
+  republishing can also leave stale generated classes in `intermediates/classes` (the generate
+  task is UP-TO-DATE while its implementation classpath is not tracked); delete the
+  `{Variant}GenerateServiceConfiguration` intermediate directory when debugging stale bytecode.
+- Variant matching: a module variant whose flavor dimension is missing from the application
+  variant is not aggregated (AGP would not variant-match such a dependency either). Modules
+  without flavors match every application flavor. Dynamic features must declare the same flavor
+  dimensions as `:app`.
 - `ServiceLoader.initialize()` directly runs `new` on the fixed class name
   `top.jayvin.android.spi.generated.ServiceConfiguration`; runtime compiles against the
   `configuration-stub` compileOnly placeholder, and the placeholder is never packaged.

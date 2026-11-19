@@ -43,7 +43,9 @@ internal object ConfigurationClassGenerator {
         )
 
         emitConstructor(cw)
-        emitServices(cw, grouped.keys.toList())
+        // services() and keys() are one-to-one per entry: an interface with two keys appears
+        // twice in services(). ProviderRegistry groups by service and reads keys by index.
+        emitServices(cw, entries.map { it.service })
         emitKeys(cw, entries.map { it.key })
         emitProviderOf(cw, grouped)
         emitNewProvider(cw, grouped)
