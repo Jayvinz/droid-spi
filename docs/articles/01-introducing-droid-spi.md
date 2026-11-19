@@ -49,11 +49,14 @@ class VipHomeServiceImpl : HomeService {
 }
 ```
 
-Initialize once, in `Application.onCreate`:
+Initialize eagerly (optional) in `Application.onCreate`:
 
 ```kotlin
 ServiceLoader.initialize()
 ```
+
+The table is loaded lazily on the first lookup anyway; calling this just makes the cost
+deterministic and surfaces a missing generated class at startup.
 
 Look up wherever you need it:
 

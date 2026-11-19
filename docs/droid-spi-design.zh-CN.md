@@ -349,8 +349,8 @@ interface ProviderConfiguration {
 
 ### 4.3 初始化入口：compileOnly 占位类
 
-生成类是一个普通的 `final` 类，只实现 `ProviderConfiguration`；由应用在 `Application.onCreate`
-里显式初始化：
+生成类是一个普通的 `final` 类，只实现 `ProviderConfiguration`；门面在第一次查询时懒加载构造它
+（volatile 双重检查锁），也可以在 `Application.onCreate` 里通过 `initialize()` 提前初始化（可选）：
 
 ```kotlin
 class MyApp : Application() {
@@ -427,10 +427,9 @@ object ServiceLoader {
 }
 ```
 
-`initialize()` 应先于任何查询执行，且是幂等的——重复调用不做任何事。门面永不抛异常：在
-`initialize()` 之前调用查询方法会打印一次警告并返回 null / 空集合；`initialize()` 自身在生成类
-缺失或配置无效时打印错误并降级为空配置。初始化完成后，服务不可用是常态，查询方法返回 null
-（或空集合）而不抛异常。
+初始化是懒加载的：第一次查询（或显式调用 `initialize()`）在双重检查锁下只加载一次配置；两条路径
+都是幂等的。门面永不抛异常：生成类缺失或配置无效时打印错误并降级为空配置，之后所有查询返回
+null / 空集合。提前初始化只是把这一诊断从第一次查询提前到 `Application.onCreate`。
 
 除 inline 方法外，所有公开方法都有 `@JvmStatic`；Java 不支持 reified，用 Class 字面量调用；
 `Sequence` 在 Java 里不适合直接遍历，因此额外提供 `providers()` 返回 `List`：

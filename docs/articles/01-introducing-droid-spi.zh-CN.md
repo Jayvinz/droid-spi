@@ -45,11 +45,13 @@ class VipHomeServiceImpl : HomeService {
 }
 ```
 
-在 `Application.onCreate` 中初始化一次：
+在 `Application.onCreate` 中提前初始化（可选）：
 
 ```kotlin
 ServiceLoader.initialize()
 ```
+
+配置表本来就会在第一次查询时懒加载；这里只是让开销确定，并把“生成类缺失”暴露在启动阶段。
 
 在需要的地方查找：
 

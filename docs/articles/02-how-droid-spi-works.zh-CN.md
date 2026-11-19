@@ -110,9 +110,8 @@ ASM `ClassWriter` 的 `getCommonSuperClass` 也被强制返回 `java/lang/Object
   重试不可能成功。
 - `stateOf()` 按需探测，返回 `READY` / `MISSING` / `DEAD`。
 
-门面在设计上是全函数。在 `initialize()` 之前调用任何查询只会打印一次警告并返回 `null` / 空集合。
-生成类缺失或非法时会记录 error 并替换为空配置。这是有意的 API 决策：服务发现层不应该因为某个模块
-缺失就让应用崩溃。
+门面在设计上是全函数。配置在第一次查询时懒加载（volatile 双重检查锁）；生成类缺失或无效时会记录
+error 并替换为空配置。这是有意的 API 决策：服务发现层不应该因为某个模块缺失就让应用崩溃。
 
 ## 缓存与正确性
 

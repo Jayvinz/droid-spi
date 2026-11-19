@@ -7,8 +7,8 @@ import org.junit.Before
 import org.junit.Test
 
 /**
- * The public facade must never throw: before [ServiceLoader.initialize] every lookup degrades to
- * `null` / an empty collection (logging once) instead of raising. No device required.
+ * The public facade must never throw: it initializes lazily on the first lookup and degrades to
+ * `null` / an empty collection when no generated configuration exists. No device required.
  */
 class ServiceLoaderFacadeTest {
 
@@ -16,9 +16,12 @@ class ServiceLoaderFacadeTest {
     fun reset() = ServiceLoader.resetForTest()
 
     @Test
-    fun `lookups before initialize return null or empty instead of throwing`() {
+    fun `first lookup initializes lazily without throwing`() {
         assertFalse(ServiceLoader.isInitialized())
+
         assertFacadeEmpty()
+
+        assertTrue(ServiceLoader.isInitialized())
     }
 
     @Test
@@ -34,8 +37,7 @@ class ServiceLoaderFacadeTest {
     }
 
     /** Every public lookup degrades to null / empty instead of throwing while the table is empty. */
-    private fun assertFacadeEmpty() {
-        assertNull(ServiceLoader.load(Any::class.java))
+    private fun assertFacadeEmpty() {        assertNull(ServiceLoader.load(Any::class.java))
         assertNull(ServiceLoader.load(Any::class.java, "vip"))
         assertNull(ServiceLoader.loadClass(Any::class.java))
         assertNull(ServiceLoader.providerOf(Any::class.java))

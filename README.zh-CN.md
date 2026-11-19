@@ -72,7 +72,7 @@ class VipHomeServiceImpl : HomeService {
 
 纯 Java 工程写法相同：`@ServiceProvider(service = HomeService.class)`。
 
-**2. 启动时初始化一次**：
+**2. 初始化（可选）**：
 
 ```kotlin
 class App : Application() {
@@ -82,6 +82,9 @@ class App : Application() {
     }
 }
 ```
+
+配置表在第一次查询时懒加载，因此这一步是可选的。提前调用可以让初始化成本确定，并把“生成类缺失”
+的问题暴露在启动阶段而不是第一次查询时；两种路径都是线程安全且幂等的。
 
 **3. 在业务代码中查找**：
 

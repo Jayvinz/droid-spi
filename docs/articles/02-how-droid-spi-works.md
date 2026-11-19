@@ -131,10 +131,10 @@ return-type requirements are not validated at build time, and a violation fails 
   erroneous and retrying cannot succeed.
 - `stateOf()` probes on demand and returns `READY` / `MISSING` / `DEAD`.
 
-The facade is total by design. Calling any lookup before `initialize()` logs a warning once and
-returns `null` / an empty collection. A missing or invalid generated class is logged as an error
-and replaced with an empty configuration. This is a deliberate API decision: a service discovery
-layer should not crash an app because a module is absent.
+The facade is total by design. It loads the configuration lazily on the first lookup (volatile
+double-checked locking); a missing or invalid generated class is logged as an error and replaced
+with an empty configuration. This is a deliberate API decision: a service discovery layer should
+not crash an app because a module is absent.
 
 ## Caching and correctness
 

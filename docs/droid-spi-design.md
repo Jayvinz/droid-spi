@@ -393,8 +393,9 @@ key, because several default entries can share the empty key.
 
 ### 4.3 Initialization entry: the compileOnly placeholder class
 
-The generated class is an ordinary `final` class implementing only `ProviderConfiguration`; the
-app initializes it explicitly from `Application.onCreate`:
+The generated class is an ordinary `final` class implementing only `ProviderConfiguration`. The
+facade constructs it lazily on the first lookup, using volatile double-checked locking, or eagerly
+from `Application.onCreate` via `initialize()` (optional):
 
 ```kotlin
 class MyApp : Application() {
@@ -484,11 +485,11 @@ object ServiceLoader {
 }
 ```
 
-`initialize()` should run before lookups and is idempotent — later calls are no-ops. The facade
-never throws: a lookup before `initialize()` logs a warning once and returns null / an empty
-collection, and `initialize()` itself degrades a missing or invalid generated configuration to
-an empty configuration after logging an error. Once initialized, an unavailable service is a
-normal state and the lookup methods return null (or an empty collection) instead of throwing.
+Initialization is lazy: the first lookup (or an explicit `initialize()` call) loads the
+configuration once under double-checked locking. Both paths are idempotent. The facade never
+throws: a missing or invalid generated configuration is logged as an error and degraded to an
+empty configuration, after which every lookup returns null / an empty collection. Eager
+initialization simply moves that diagnosis from the first lookup to `Application.onCreate`.
 
 Every non-inline public method is `@JvmStatic`; Java lacks reified generics, so pass Class
 literals; `Sequence` is awkward to iterate in Java, so `providers()` returns a `List`:

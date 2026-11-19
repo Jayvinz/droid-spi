@@ -19,9 +19,10 @@ aggregates all manifests into a `ServiceConfiguration` class with a fixed fully-
 name (generated as bytecode with ASM). The app instantiates it directly from
 `Application.onCreate` via `ServiceLoader.initialize()`.
 At runtime the `ServiceLoader` facade resolves providers from this table on demand; once a
-module is installed, the next `load()` succeeds without any refresh. Both the configuration
-class and providers are referenced through class literals (`new` / `ldc`); there is no
-`Class.forName` and no reflective provider construction anywhere.
+module is installed, the next `load()` succeeds without any refresh. The configuration is loaded
+lazily on the first lookup (double-checked locking) or eagerly via `ServiceLoader.initialize()`.
+Both the configuration class and providers are referenced through class literals (`new` / `ldc`);
+there is no `Class.forName` and no reflective provider construction anywhere.
 
 Design document: `docs/droid-spi-design.md` (Chinese: `docs/droid-spi-design.zh-CN.md`).
 User documentation: `README.md` (Chinese: `README.zh-CN.md`)
@@ -162,8 +163,9 @@ declare the same dimensions and flavor names; otherwise Gradle cannot choose a b
 
 ## Runtime path
 
-`ServiceConfiguration` is an ordinary class (no longer a ContentProvider). The app calls
-`ServiceLoader.initialize()` from `Application.onCreate`, and that method directly runs
+`ServiceConfiguration` is an ordinary class (no longer a ContentProvider). The configuration is
+loaded lazily on the first facade call, or eagerly via `ServiceLoader.initialize()` in
+`Application.onCreate`. Loading directly runs
 `new top.jayvin.android.spi.generated.ServiceConfiguration` (runtime compiles against the
 `configuration-stub` placeholder; at runtime the generated same-name class takes its place).
 If the class is missing (app did not apply the plugin), the exception is caught, logged, and
@@ -185,9 +187,9 @@ an empty configuration is used.
   and the generate task logs a warning listing that order when a service has several defaults.
   If the default key has nothing available and the service has exactly one
   available non-default key, that provider is used as a fallback.
-- The `ServiceLoader` facade never throws: before `initialize()` it logs a warning once, and a
-  missing / invalid `ServiceConfiguration` is logged as an error; both degrade to `null` / an
-  empty collection.
+- The `ServiceLoader` facade never throws. Initialization is lazy and thread-safe (volatile
+  double-checked locking); a missing / invalid `ServiceConfiguration` is logged as an error and
+  degraded to an empty configuration, and all lookups then return `null` / an empty collection.
 - No Play install listener is registered; `SplitInstallStateUpdatedListener` / `InstallWatcher`
   have been removed.
 
@@ -250,8 +252,9 @@ These are correctness red lines, not style preferences:
   configuration-cache reuse, especially with isolated projects, Gradle serializes such
   cross-project providers as plain files, the scan tasks silently leave the task graph, and stale
   manifests reach the generator.
-- `ServiceLoader.initialize()` directly runs `new` on the fixed class name
-  `top.jayvin.android.spi.generated.ServiceConfiguration`; runtime compiles against the
+- `ServiceLoader` lazily runs `new` on the fixed class name
+  `top.jayvin.android.spi.generated.ServiceConfiguration` on the first lookup (or eagerly via
+  `initialize()`); runtime compiles against the
   `configuration-stub` compileOnly placeholder, and the placeholder is never packaged.
   If the class is missing, it only logs and degrades to an empty configuration.
 - R8: base reports missing classes for uninstalled modules; add `-dontwarn` per module

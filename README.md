@@ -73,7 +73,7 @@ class VipHomeServiceImpl : HomeService {
 
 Pure Java works the same way: `@ServiceProvider(service = HomeService.class)`.
 
-**2. Initialize once** in `Application.onCreate`:
+**2. Initialize (optional)** in `Application.onCreate`:
 
 ```kotlin
 class App : Application() {
@@ -83,6 +83,10 @@ class App : Application() {
     }
 }
 ```
+
+The table is loaded lazily on the first lookup, so this call is optional. Calling it eagerly makes
+the cost deterministic and reports a missing generated class at startup rather than at the first
+lookup; both paths are thread-safe and idempotent.
 
 **3. Look up** where you need it:
 
