@@ -1,6 +1,7 @@
 plugins {
     id("java-library")
     id("maven-publish")
+    id("framework-publishing")
 }
 
 // Keep the annotation module plain Java so pure Java projects can reference it directly;

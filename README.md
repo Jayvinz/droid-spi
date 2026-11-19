@@ -135,7 +135,9 @@ proves the table.
 
 "Camera module" drives the dynamic-install path; a sideloaded APK has no Play Store, so it must
 fail gracefully (logged, no crash). Screenshots from the verification run are written to
-`build/ui-test/` (gitignored).
+`build/ui-test/` (gitignored). The full regression matrix (builds, caches, bytecode/APK checks,
+on-device UI) is documented in `docs/android-spi-design.md` §8.1 and should be re-run after
+major plugin changes.
 
 
 ## Integration in three steps
@@ -380,6 +382,13 @@ The scanner prefers a failed build over generating a wrong table:
   it declares matches the app variant's value; modules without flavors match every app flavor.
   A dependency with a flavor dimension the app does not declare is never aggregated (AGP would
   not variant-match it either).
+- **Manifests are collected through variant resolution**: the app reads them from its runtime
+  dependencies (transitively) and from the projects listed in `dynamicFeatures`. A dynamic
+  feature that does not apply the plugin contributes no providers; a plugin-applied module that
+  is neither a runtime dependency nor a declared dynamic feature is not aggregated.
+- **Caches**: incremental builds, build cache (including a relocated copy of the project) and
+  configuration cache (including isolated projects) are supported. Manifests travel as typed
+  artifacts, so the scan → generate producer edges survive cache reuse.
 - **Nested classes / `typealias` are not supported as services**: the scanner resolves
   top-level types.
 - **Non-Play channels**: the framework does not depend on Play; the install channel and

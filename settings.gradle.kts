@@ -1,4 +1,8 @@
 pluginManagement {
+    // Framework version is defined once in gradle.properties (spiVersion).
+    plugins {
+        id("top.jayvin.android.spi") version providers.gradleProperty("spiVersion").get()
+    }
     repositories {
         // The framework is published here; demo modules consume the plugin from the same repository
         maven {

@@ -2,6 +2,7 @@ plugins {
     id("org.jetbrains.kotlin.jvm")
     id("java-gradle-plugin")
     id("maven-publish")
+    id("framework-publishing")
 }
 
 kotlin {

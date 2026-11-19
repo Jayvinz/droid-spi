@@ -222,11 +222,20 @@ com.example.core.api.AccountService	com.example.feature.account.GuestAccountServ
 
 四列：`service \t provider \t key \t factory`（`key` 为空串表示默认变体，`factory` 为空表示走无参构造）。
 
-`GenerateServiceConfigurationTask` 按 app 的每个 variant 运行，输入是所有**匹配**的模块 variant 清单：
-build type 相同，且模块声明的每个 flavor 维度都与 app variant 取值一致（无 flavor 的模块匹配所有 flavor）。
-因此 `freeDebug` 与 `paidDebug` 得到互不相交的表，每个 variant 各自把生成的 class 追加到自己的
-`ScopedArtifact.CLASSES`。随后校验 `(service, key)` 全局唯一（冲突直接报错并列出两个 provider），
-再生成 `ServiceConfiguration` 字节码。
+清单通过 Gradle 的 variant-aware 解析到达 app，而不是跨工程收集：
+
+- 每个应用了插件的模块 variant 把清单以自定义类型 `spi-manifest` 追加到
+  `{variant}RuntimeElements`；app 的生成任务对 `variant.runtimeConfiguration` 取按该类型过滤的
+  artifact view，因此能（传递地）拿到所有应用了插件的运行时依赖的清单，没应用插件的模块不贡献文件；
+- 动态特性不在 app 的运行时 classpath 上。app 对自身 `dynamicFeatures` DSL 里的每个工程声明依赖，
+  并对它们的 runtime elements 取同样的按类型过滤的 artifact view。没有应用插件的动态特性不会携带
+  清单 artifact，自然贡献 0 条 provider —— 不声明 provider 的特性没有必须应用插件的要求。
+
+`GenerateServiceConfigurationTask` 按 app 的每个 variant 运行，校验 `(service, key)` 全局唯一
+（冲突直接报错并列出两个 provider），再生成 `ServiceConfiguration` 字节码并追加到该 variant 的
+`ScopedArtifact.CLASSES`。由于清单是普通的任务输出 artifact，scan → generate 的边由 Gradle
+自己维护，configuration cache 复用和 isolated projects 下都不会丢；若改成跨工程 `Provider`
+或 root 扩展传递，configuration cache 复用时会退化为普通文件，scan 任务会静默从任务图消失。
 
 两个任务都标注了 `@CacheableTask`；输入输出确定性，clean build 时可由 Gradle 从构建缓存恢复。
 
@@ -277,11 +286,12 @@ variant.artifacts.forScope(ScopedArtifacts.Scope.PROJECT)
 也不需要把所有输入 class 重新打包一遍。该接线对**每个 variant** 各执行一次，而不是每个 build type
 一次：flavor variant 共享 build type，但每个 variant 都需要自己的 classes 产物里有生成类。
 
-**跨工程收集用 `projectsEvaluated` 而不是配置期 `findByName`**：Gradle 按 settings 顺序逐个
-evaluate 工程，app 可能早于 feature 模块被配置，此时 `findByName("FreeDebugScanProviders")`
-返回 null 会静默漏掉整个模块。每个模块把自己的按 variant `Provider<RegularFile>` 登记到 root
-extension，app 在 `projectsEvaluated` 时一次性接上所有匹配条目——此时所有工程都已配置完成，
-且 Provider 携带 producer 依赖，任务图里自动生成 scan → generate 的边。
+**清单传递走 artifact view，而不是跨工程收集器**：用 root 扩展或共享 build service 保存其它工程的
+`Provider<RegularFile>` 在所有任务都 up-to-date 时看不出问题，但在 configuration cache 复用
+（尤其是 isolated projects）下，Gradle 会把跨工程 Provider 序列化成普通文件：scan 任务从任务图里
+消失，陈旧的清单仍会传给生成器。把清单发布成带类型 artifact 后，Gradle 会用与 classes 相同的
+variant 选择来解析它，producer 边得以保留。app 在 `projectsEvaluated` 时声明 `dynamicFeatures`
+依赖（此时 DSL 值已确定）；声明依赖并不读取其它工程的模型，因此 isolated projects 保持干净。
 
 ---
 
@@ -490,7 +500,7 @@ WMRouter 的 `ServiceLoader.put()` 是 public static，可以手工接入动态�
 | 不支持嵌套类 / `typealias` | 扫描器按顶层类型解析 | 已记录的限制；service 请声明为顶层接口 |
 | R8 missing class | base 引用未安装模块的类会告警 | 按模块补 `-dontwarn`（示例已给） |
 | 非 Play 渠道 | 框架没有内建安装通道，split 可见性取决于宿主 | 由宿主实现自己的分发通道；已打进包里的 provider 保持 READY |
-| 配置缓存 | 标准模式已实测支持（存储/复用、源码变更、多 variant、clean + build cache 组合均通过）；插件不持有不可序列化的 `Project` 状态，`spiRoot` 里只放 `Provider<RegularFile>`。incubating 的 **isolated projects** 不支持：每个模块在配置期读取 root 项目的 `spiRoot` 扩展，产生 6 个跨工程访问问题 | 保持 `org.gradle.unsafe.isolated-projects` 关闭；标准 `--configuration-cache` 可用 |
+| 配置缓存 / isolated projects | 两者均支持：清单作为带类型 artifact 由 Gradle 的 variant 解析维护，configuration cache 复用后 producer 边仍存在；没有工程读取其它工程的模型。已实测存储/复用、源码变更、四个 variant 与 AAB | — |
 
 ---
 
@@ -509,7 +519,47 @@ WMRouter 的 `ServiceLoader.put()` 是 public static，可以手工接入动态�
 | 增量构建 | 第二次 `:app:assembleFreeDebug` 时所有 `ScanProviders` / `GenerateServiceConfiguration` 任务均为 UP-TO-DATE，确认可缓存任务接线生效 |
 | 增删 provider | 临时增删一个 provider 只重跑该模块的 scan + generate（及下游打包），其它模块 scan 保持 UP-TO-DATE；还原后任务 FROM-CACHE |
 | Build cache | `clean` 后重建时所有 scan + generate 任务 FROM-CACHE；把工程按字节一致地复制到另一个绝对路径后同样全部 FROM-CACHE，验证了 RELATIVE 路径敏感度与确定性输出 |
-| Configuration cache | 存储 + 复用通过；`--configuration-cache` 下改源码仍能重跑 scan/generate；四个 variant 一次构建；`:app:bundleFreeDebug` 通过。isolated projects 模式因跨工程访问 `spiRoot` 扩展而失败（见第 7 节） |
+| Configuration cache | 存储 + 复用通过；`--configuration-cache` 下改源码仍能重跑 scan/generate；四个 variant 一次构建；`:app:bundleFreeDebug` 通过 |
+| Isolated projects | `-Dorg.gradle.unsafe.isolated-projects=true` 下，存储/复用、增删 provider、四个 variant 与 AAB 构建均通过 |
+| 动态特性不接插件 | 从 `dynamicFeatures` 的某个工程移除插件后仍可正常构建（标准与 isolated 模式）；表中只是没有该特性的 provider，恢复插件后重新出现 |
 | 生成字节码 | `javap -c` 确认：**无 `<clinit>`**、`providerOf` 只有 `ldc`、`newProvider` 对 `@ProviderFactory` 用 `INVOKESTATIC`；`services()` / `keys()` 按下标一一对应（debug 8 条、release 7 条） |
 | 分包正确性 | `dexdump` 确认 `CameraServiceImpl` 只在 `feature_camera/dex`，base dex 只有引用 |
 | 标准 SPI 配置 | `modules/core-common` 的 `META-INF/services/...LegacyService` 被扫描进清单（`LegacyService → LegacyServiceImpl`），生成字节码含 `ldc LegacyServiceImpl` 与 `new LegacyServiceImpl`，`MainActivity` 调用 `ServiceLoader.load(LegacyService::class.java)` 返回非空 |
+
+### 8.1 完整回归矩阵（插件大改动后必须跑一遍）
+
+扫描、聚合、artifact 接线或缓存机制有任何改动，都必须重跑本矩阵。以下步骤在 artifact 传递方案
+重写后全部执行过（Gradle 8.9 / AGP 8.7.3）。
+
+1. **框架发布 + JVM 单测**
+   ```bash
+   ./gradlew :annotation:publish :runtime:publish :plugin:publish
+   ./gradlew :runtime:testDebugUnitTest --rerun-tasks
+   ```
+2. **clean 构建全部变体**（同时验证 AAB）
+   ```bash
+   ./gradlew clean :app:assembleFreeDebug :app:assemblePaidDebug :app:assembleFreeRelease :app:assemblePaidRelease
+   ./gradlew :app:bundleFreeDebug
+   ```
+3. **逐变体检查生成类**（`javap -p -c`）：只含本 flavor 的 `ChannelServiceImpl`；debug 有
+   `DebugServiceImpl`、release 没有；`services()` 与 `keys()` 长度相等（debug 8 / release 7）；
+   无 `<clinit>`。
+4. **APK/AAB 内容**（`dexdump`）：`CameraServiceImpl` 只在 feature split 中；任何 APK/AAB 都
+   不应出现 `services.txt` artifact。
+5. **增量**：给某个模块临时加一个 `@ServiceProvider`，构建后确认只有该模块的 scan + generate
+   重跑；删除后确认 FROM-CACHE 且生成类恢复。
+6. **Build cache**：`clean` 重建时所有 scan + generate 均 FROM-CACHE；把工程按字节一致地复制到
+   另一个绝对路径后同样 FROM-CACHE。
+7. **Configuration cache（标准）**：存储、复用；在复用状态下增删 provider，scan + generate 必须
+   重跑。再用一次构建四个变体、以及 `:app:bundleFreeDebug` 各验一遍。
+8. **Isolated projects**：用 `-Dorg.gradle.unsafe.isolated-projects=true`（Gradle 9.7+ 用
+   `--isolated-projects`）重复第 6–7 步。
+9. **动态特性容错**：从某个 `dynamicFeatures` 工程移除插件，构建仍须成功且该特性贡献 0 条
+   provider；恢复插件后条目重新出现。
+10. **真机矩阵**：安装四个 APK 并逐个启动，确认 `SELF-CHECK PASS 12/12` 及变体相关值
+    （flavor provider、buildType 隔离、条目数）；点击 "Re-run checks" 与 "Camera module"
+    （侧载 APK 上 split install 以 -14 优雅失败）；截图保存在 `build/ui-test/`，并确认没有
+    `AndroidRuntime` 异常。
+
+已知缺口：真实 Play 动态安装后的 `MISSING → READY` 切换无法用侧载 APK 验证；运行时单测用假
+`ProviderConfiguration` 覆盖了等价的状态迁移。

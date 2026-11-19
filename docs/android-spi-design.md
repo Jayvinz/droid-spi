@@ -239,13 +239,27 @@ com.example.core.api.AccountService	com.example.feature.account.GuestAccountServ
 Four columns: `service \t provider \t key \t factory` (an empty `key` means the default
 variant; an empty `factory` means no-arg construction).
 
-`GenerateServiceConfigurationTask` runs per application variant and takes the manifests of every
-compatible module variant: same build type, and every flavor dimension declared by the module
-matches the application variant's value (a module without flavors matches every application
-flavor). `freeDebug` and `paidDebug` therefore get disjoint tables, and each variant appends its
-own generated class to its own `ScopedArtifact.CLASSES`. It validates that `(service, key)` is
-globally unique (a conflict fails the build and lists both providers), then generates the
-`ServiceConfiguration` bytecode.
+Manifests reach the app through Gradle's variant-aware resolution, not through a cross-project
+collector:
+
+- every plugin module variant adds its manifest to `{variant}RuntimeElements` as an artifact of
+  the custom type `spi-manifest`. The app's generate task takes an artifact view of
+  `variant.runtimeConfiguration` filtered by that type, so it sees the manifests of all
+  (transitive) runtime dependencies that apply the plugin; modules without the plugin simply
+  contribute no manifest;
+- dynamic features are not on the app's runtime classpath. The app declares a dependency for each
+  project in its own `dynamicFeatures` DSL and takes the same artifact-type-filtered view of
+  their runtime elements. A feature that does not apply the plugin carries no manifest artifact
+  and simply contributes no providers — there is no requirement to apply the plugin to features
+  that do not declare any.
+
+`GenerateServiceConfigurationTask` runs per application variant, validates that `(service, key)`
+is globally unique (a conflict fails the build and lists both providers), then generates the
+`ServiceConfiguration` bytecode and appends it to that variant's `ScopedArtifact.CLASSES`.
+Because the manifests are ordinary task-output artifacts, Gradle owns the scan → generate edges;
+they survive configuration-cache reuse and isolated projects. Passing them as cross-project
+`Provider`s or through a root-project extension would instead degrade to plain files during
+configuration-cache reuse, silently dropping the scan tasks from the task graph.
 
 Both tasks are annotated `@CacheableTask`; their deterministic inputs and outputs let Gradle
 restore them from the build cache on clean builds.
@@ -301,13 +315,15 @@ is no read-while-write cycle and no need to repackage all input classes. The ope
 registered for **every variant**, not once per build type: flavor variants share a build type and
 each one needs the generated class in its own classes artifact.
 
-**Cross-project collection uses `projectsEvaluated` rather than configuration-time
-`findByName`**: Gradle evaluates projects in settings order, so app may be configured before
-feature modules; at that time `findByName("FreeDebugScanProviders")` returns null and silently
-drops the whole module. Each module registers its per-variant `Provider<RegularFile>` on the
-root extension, and the app wires the compatible entries at `projectsEvaluated` — by then every
-project is configured, and the Provider carries its producer dependency, so the scan → generate
-edge is created automatically in the task graph.
+**Manifest transport uses artifact views, not a cross-project collector.** A root-project
+extension or a shared build service holding other projects' `Provider<RegularFile>` looks
+harmless while everything is up to date, but under configuration-cache reuse (and especially
+isolated projects) Gradle serializes such cross-project providers as plain files: the scan tasks
+drop out of the task graph and stale manifests reach the generator. Publishing the manifest as a
+typed artifact lets Gradle resolve it through the same variant selection it uses for classes,
+which preserves the producer edges. The app declares its `dynamicFeatures` dependencies at
+`projectsEvaluated` (their DSL values are final by then); declaring dependencies does not read
+another project's model, so isolated projects stays clean.
 
 ---
 
@@ -545,7 +561,7 @@ but its table stores `Class` literals and initializes once (`mHasInit`); once an
 | Nested classes / `typealias` unsupported | The scanner resolves top-level types | Documented limitation; declare services as top-level interfaces |
 | R8 missing classes | Base referencing uninstalled module classes warns | Add `-dontwarn` per module (sample provided) |
 | Non-Play channels | The framework has no built-in install channel; split visibility depends on the host | Host implements its own delivery channel; providers packaged in the APK remain READY |
-| Configuration cache | Standard mode is supported and verified (store + reuse, source changes, multiple variants, clean + build-cache combinations). The plugin holds no unserializable `Project` state; `spiRoot` stores `Provider<RegularFile>` values only. **Isolated projects** (incubating) is not supported: each module reads the root project's `spiRoot` extension during configuration, which produces 6 cross-project access problems | Keep `org.gradle.unsafe.isolated-projects` off; standard `--configuration-cache` works |
+| Configuration cache / isolated projects | Both are supported: manifests travel as typed artifacts owned by Gradle's variant resolution, so producer edges survive configuration-cache reuse; no project reads another project's model. Verified with store/reuse, source changes, four variants, and AAB builds | — |
 
 ---
 
@@ -562,7 +578,49 @@ but its table stores `Class` literals and initializes once (`mHasInit`); once an
 | Incremental build | A second `:app:assembleFreeDebug` leaves all `ScanProviders` / `GenerateServiceConfiguration` tasks UP-TO-DATE, confirming the cacheable task wiring |
 | Incremental rebuild | Adding/removing a provider reruns only that module's scan + generate (and downstream packaging); the other modules' scans stay UP-TO-DATE, and reverting restores the tasks FROM-CACHE |
 | Build cache | `clean` rebuild restores every scan + generate task FROM-CACHE; a byte-identical copy of the project at another absolute path also restores them, confirming the RELATIVE input path sensitivity and deterministic outputs |
-| Configuration cache | Store + reuse verified; source changes under `--configuration-cache` still rerun scan/generate; all four variants build in one invocation; `:app:bundleFreeDebug` succeeds. Isolated projects mode fails on the cross-project `spiRoot` extension (see §7) |
+| Configuration cache | Store + reuse verified; source changes under `--configuration-cache` still rerun scan/generate; all four variants build in one invocation; `:app:bundleFreeDebug` succeeds |
+| Isolated projects | `-Dorg.gradle.unsafe.isolated-projects=true` passes store/reuse, added/removed providers, all four variants, and AAB builds under the same configuration cache |
+| Dynamic feature without plugin | Removing the plugin from a `dynamicFeatures` project still builds (standard and isolated modes); the table simply contains no provider from that feature, and restoring the plugin adds it back |
 | Generated bytecode | `javap -c` confirms: **no `<clinit>`**, `providerOf` only uses `ldc`, `newProvider` uses `INVOKESTATIC` for `@ProviderFactory`; `services()` / `keys()` are index-aligned (8 entries in debug, 7 in release) |
 | Split correctness | `dexdump` confirms `CameraServiceImpl` only exists in `feature_camera/dex`; base dex only has references |
 | Standard SPI config | `modules/core-common`'s `META-INF/services/...LegacyService` is scanned into the manifest (`LegacyService → LegacyServiceImpl`); generated bytecode contains `ldc LegacyServiceImpl` and `new LegacyServiceImpl`; `MainActivity` calls `ServiceLoader.load(LegacyService::class.java)` and gets a non-null instance |
+
+### 8.1 Full regression matrix (run after major plugin changes)
+
+Any change to scanning, aggregation, artifact wiring, or caching must re-run this matrix. Every
+step below was executed for the artifact-based transport rewrite (Gradle 8.9 / AGP 8.7.3).
+
+1. **Framework publish + JVM tests**
+   ```bash
+   ./gradlew :annotation:publish :runtime:publish :plugin:publish
+   ./gradlew :runtime:testDebugUnitTest --rerun-tasks
+   ```
+2. **Clean build of all variants** (also verifies the AAB)
+   ```bash
+   ./gradlew clean :app:assembleFreeDebug :app:assemblePaidDebug :app:assembleFreeRelease :app:assemblePaidRelease
+   ./gradlew :app:bundleFreeDebug
+   ```
+3. **Generated classes, per variant** (`javap -p -c`): only the flavor's `ChannelServiceImpl`;
+   `DebugServiceImpl` present in debug and absent in release; `services()` and `keys()` lengths
+   equal (8 debug / 7 release); no `<clinit>`.
+4. **APK/AAB content** (`dexdump`): `CameraServiceImpl` exists only in the feature split, and no
+   `services.txt` artifact leaks into any APK/AAB.
+5. **Incremental**: add a temporary `@ServiceProvider` to one module, build, and confirm only
+   that module's scan + generate rerun; remove it and confirm FROM-CACHE plus a reverted class.
+6. **Build cache**: a `clean` rebuild restores every scan + generate FROM-CACHE; a byte-identical
+   copy of the project at another absolute path is also FROM-CACHE.
+7. **Configuration cache (standard)**: store, reuse, then add/remove a provider while the entry is
+   reused; scan + generate must rerun. Repeat with all four variants in one invocation and with
+   `:app:bundleFreeDebug`.
+8. **Isolated projects**: repeat steps 6–7 with
+   `-Dorg.gradle.unsafe.isolated-projects=true` (Gradle 9.7+ uses `--isolated-projects`).
+9. **Dynamic feature tolerance**: remove the plugin from a `dynamicFeatures` project; the build
+   must still succeed and that feature must contribute 0 providers; restore it.
+10. **On-device matrix**: install all four APKs, launch each, verify `SELF-CHECK PASS 12/12` and
+    the variant-specific values (flavor provider, build-type isolation, entry counts); tap
+    "Re-run checks" and "Camera module" (graceful error -14 on a sideloaded APK); keep the
+    screenshots under `build/ui-test/` and confirm no `AndroidRuntime` errors.
+
+Known gap: the `MISSING → READY` transition after a real Play dynamic install cannot be exercised
+with a sideloaded APK; the runtime unit tests cover the equivalent state change with a fake
+`ProviderConfiguration`.

@@ -4,6 +4,8 @@ plugins {
     id("top.jayvin.android.spi")
 }
 
+val spiVersion = providers.gradleProperty("spiVersion").get()
+
 android {
     namespace = "com.example.demo"
     compileSdk = 35
@@ -70,8 +72,8 @@ dependencies {
     implementation(project(":modules:feature-home"))
     implementation(project(":modules:feature-account"))
 
-    implementation("top.jayvin.android.spi:annotation:$version")
-    implementation("top.jayvin.android.spi:runtime:$version")
+    implementation("top.jayvin.android.spi:annotation:$spiVersion")
+    implementation("top.jayvin.android.spi:runtime:$spiVersion")
     // The demo owns dynamic-module installation and visibility.
     implementation("com.google.android.play:feature-delivery:2.1.0")
 }

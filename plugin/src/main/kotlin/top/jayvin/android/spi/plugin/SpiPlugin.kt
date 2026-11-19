@@ -1,11 +1,18 @@
 package top.jayvin.android.spi.plugin
 
 import com.android.build.api.artifact.ScopedArtifact
+import com.android.build.api.dsl.ApplicationExtension
 import com.android.build.api.variant.AndroidComponentsExtension
 import com.android.build.api.variant.ScopedArtifacts
 import com.android.build.api.variant.Variant
 import org.gradle.api.Plugin
 import org.gradle.api.Project
+import org.gradle.api.artifacts.Configuration
+import org.gradle.api.artifacts.type.ArtifactTypeDefinition
+import org.gradle.api.attributes.Attribute
+import org.gradle.api.attributes.AttributeContainer
+import org.gradle.api.file.RegularFile
+import org.gradle.api.provider.Provider
 import org.gradle.api.tasks.TaskProvider
 
 /**
@@ -20,15 +27,15 @@ import org.gradle.api.tasks.TaskProvider
  * Everything is keyed by **variant name**, never by build type alone: two flavors of the same
  * build type compile different sources, so they must also get different tables and different
  * generated classes. Each variant's generate task is appended to its own CLASSES artifact.
+ *
+ * Manifests travel through Gradle's variant-aware resolution: each module variant publishes its
+ * manifest as a `spi-manifest`-typed artifact on `{variant}RuntimeElements`. The app takes a
+ * type-filtered artifact view of its runtime configuration (transitive) and, for the projects
+ * listed in its own `dynamicFeatures` DSL, of their runtime elements. This keeps producer task
+ * dependencies intact under configuration-cache reuse and isolated projects; a cross-project
+ * `Provider`/extension collector would lose them.
  */
 class SpiPlugin : Plugin<Project> {
-
-    /** An application variant waiting for every module's variant entries at `projectsEvaluated`. */
-    private class PendingGeneration(
-        val task: TaskProvider<GenerateServiceConfigurationTask>,
-        val buildType: String?,
-        val flavors: Map<String, String>,
-    )
 
     /** Registers a scan task for every variant and a generate task for application variants. */
     override fun apply(project: Project) {
@@ -36,34 +43,17 @@ class SpiPlugin : Plugin<Project> {
         val androidComponents =
             project.extensions.getByType(AndroidComponentsExtension::class.java)
         val isApplication = project.plugins.hasPlugin("com.android.application")
-        val rootExtension = rootExtension(project)
-        val pending = mutableListOf<PendingGeneration>()
+
+        // The DSL is final by the time `onVariants` callbacks run; compute the paths once.
+        val dynamicFeatures = lazy { dynamicFeaturePaths(project) }
 
         androidComponents.onVariants(androidComponents.selector().all()) { variant ->
             if (!extension.enabled) return@onVariants
 
-            registerScan(project, variant, extension, rootExtension)
+            val manifest = registerScan(project, variant, extension)
 
             if (isApplication) {
-                pending += PendingGeneration(
-                    task = registerGenerate(project, variant),
-                    buildType = variant.buildType,
-                    flavors = variant.productFlavors.toMap(),
-                )
-            }
-        }
-
-        // One hook for every application variant: the `onVariants` callbacks above run during
-        // project evaluation, so their entries are complete by the time this fires. Wiring here
-        // avoids configuration-time cross-project evaluation order issues, and each manifest
-        // Provider carries its producer dependency, so the scan → generate edge is implicit.
-        project.gradle.projectsEvaluated {
-            val entries = rootExtension.entries
-            pending.forEach { generation ->
-                val manifests = entries
-                    .filter { it.isCompatibleWith(generation.buildType, generation.flavors) }
-                    .map { it.manifest }
-                generation.task.configure { t -> t.manifests.from(*manifests.toTypedArray()) }
+                registerGenerate(project, variant, manifest, dynamicFeatures.value)
             }
         }
     }
@@ -72,8 +62,7 @@ class SpiPlugin : Plugin<Project> {
         project: Project,
         variant: Variant,
         extension: SpiExtension,
-        rootExtension: SpiRootExtension,
-    ) {
+    ): Provider<RegularFile> {
         val variantName = variant.name
 
         val task = project.tasks.register(
@@ -93,19 +82,46 @@ class SpiPlugin : Plugin<Project> {
             }
             t.manifestFile.set(project.spiVariantDir(variantName).map { it.file("services.txt") })
         }
+        val manifest = task.flatMap { it.manifestFile }
 
-        rootExtension.entries += SpiVariantEntry(
-            buildType = variant.buildType,
-            flavors = variant.productFlavors,
-            manifest = task.flatMap { it.manifestFile },
-        )
+        // Reachable from any runtime classpath: consumers filter this custom artifact type, so
+        // modules without the plugin simply contribute no manifest. Every Android variant has
+        // this outgoing configuration; fail loudly if AGP ever stops creating it.
+        project.configurations.getByName("${variantName}RuntimeElements")
+            .outgoing.artifact(manifest) { artifact ->
+                artifact.type = SPI_MANIFEST_ARTIFACT_TYPE
+                artifact.builtBy(task)
+            }
+
+        return manifest
     }
 
     private fun registerGenerate(
         project: Project,
         variant: Variant,
-    ): TaskProvider<GenerateServiceConfigurationTask> {
+        ownManifest: Provider<RegularFile>,
+        dynamicFeatures: Set<String>,
+    ) {
         val variantName = variant.name
+
+        // Dynamic features are not on the app's runtime classpath. Select their runtime
+        // elements with the same attributes as this app variant, then keep only the manifests
+        // through the artifact view; a feature without the plugin contributes nothing.
+        val dynamicFeatureManifests = project.configurations.create(
+            "spi${variantName.capitalized()}DynamicFeatureManifests",
+        ) { config ->
+            config.isCanBeResolved = true
+            config.isCanBeConsumed = false
+            config.isVisible = false
+            config.description = "SPI provider manifests of $variantName dynamic features"
+            copyAttributes(variant.runtimeConfiguration.attributes, config.attributes)
+        }
+        dynamicFeatures.forEach { path ->
+            dynamicFeatureManifests.dependencies.add(
+                project.dependencies.project(mapOf("path" to path)),
+            )
+        }
+
         val task = project.tasks.register(
             "${variantName.capitalized()}GenerateServiceConfiguration",
             GenerateServiceConfigurationTask::class.java,
@@ -116,6 +132,11 @@ class SpiPlugin : Plugin<Project> {
             t.packageName.set(GENERATED_PACKAGE)
             t.className.set(GENERATED_CLASS_NAME)
             t.outputDir.set(project.spiVariantDir(variantName).map { it.dir("classes") })
+            t.manifests.from(
+                manifestFiles(variant.runtimeConfiguration),
+                manifestFiles(dynamicFeatureManifests),
+                ownManifest,
+            )
         }
 
         // Every variant needs its own append. Flavors make several variants share a build type;
@@ -123,9 +144,33 @@ class SpiPlugin : Plugin<Project> {
         variant.artifacts.forScope(ScopedArtifacts.Scope.PROJECT)
             .use(task)
             .toAppend(ScopedArtifact.CLASSES) { t -> t.outputDir }
-
-        return task
     }
+
+    /** Files of the custom manifest artifact type carried by [configuration]. */
+    private fun manifestFiles(configuration: Configuration) =
+        configuration.incoming.artifactView { view ->
+            view.attributes.attribute(
+                ArtifactTypeDefinition.ARTIFACT_TYPE_ATTRIBUTE,
+                SPI_MANIFEST_ARTIFACT_TYPE,
+            )
+        }.files
+
+    /** Copies every attribute so variant selection follows AGP's own contract for this variant. */
+    private fun copyAttributes(from: AttributeContainer, to: AttributeContainer) {
+        from.keySet().forEach { key ->
+            @Suppress("UNCHECKED_CAST")
+            val attribute = key as Attribute<Any>
+            to.attribute(attribute, from.getAttribute(attribute))
+        }
+    }
+
+    /** Project paths of the application's dynamic features, declared in its own build script. */
+    private fun dynamicFeaturePaths(project: Project): Set<String> =
+        project.extensions.findByType(ApplicationExtension::class.java)
+            ?.dynamicFeatures
+            .orEmpty()
+            .filter { it.isNotBlank() }
+            .toSet()
 
     /** Base output directory for one variant's manifest and generated class. */
     private fun Project.spiVariantDir(variantName: String) =
