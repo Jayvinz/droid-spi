@@ -101,7 +101,9 @@ ASM `ClassWriter` 的 `getCommonSuperClass` 也被强制返回 `java/lang/Object
 `ProviderRegistry` 在启动时刻意几乎什么都不做：
 
 - 不预扫描。构造注册表只是保存配置。
-- `load()` 遍历 `(service, key)` 的所有条目并直接调用 `newProviderAt()`，返回第一个可用的。如果类不存在，`NoClassDefFoundError` 会被捕获并转换为
+- `load()` 遍历 `(service, key)` 的所有条目并直接调用 `newProviderAt()`，返回第一个可用的。条目按
+  `(service, key, provider FQN)` 排序，因此多个默认实现拥有与模块布局无关的确定顺序（构建日志会
+  打印该顺序）。如果类不存在，`NoClassDefFoundError` 会被捕获并转换为
   `null`；下一次调用会重试。这就是新安装的动态模块无需任何 refresh 就能工作的原因。
 - `MISSING` 从不缓存。`READY` 也不缓存；provider 按调用实例化，与 `ServiceLoader` 语义一致。
 - `DEAD` **会**被缓存：一旦某个 provider 的 `<clinit>` 抛出异常，JVM 已把该类标记为 erroneous，

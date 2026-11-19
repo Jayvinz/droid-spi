@@ -181,7 +181,9 @@ an empty configuration is used.
   `MISSING` / `DEAD`; for several default entries the states are aggregated (any READY wins).
 - `load()` returns `null` when unavailable (it never throws). The default key is the empty
   string (`ServiceLoader.DEFAULT_KEY`); with several default implementations it returns the first
-  available one. If the default key has nothing available and the service has exactly one
+  available one. Entries are ordered by `(service, key, provider FQN)` (`ProviderTable.sort`),
+  and the generate task logs a warning listing that order when a service has several defaults.
+  If the default key has nothing available and the service has exactly one
   available non-default key, that provider is used as a fallback.
 - The `ServiceLoader` facade never throws: before `initialize()` it logs a warning once, and a
   missing / invalid `ServiceConfiguration` is logged as an error; both degrade to `null` / an

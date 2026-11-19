@@ -14,6 +14,14 @@ import org.gradle.api.GradleException
  */
 internal object ProviderTable {
 
+    /**
+     * Stable, layout-independent order. The provider FQN is the final tiebreaker, so several
+     * default implementations of one service are ordered by name regardless of which module
+     * produced them. Runtime `load()` returns the first *available* entry in this order.
+     */
+    fun sort(entries: List<ProviderEntry>): List<ProviderEntry> =
+        entries.sortedWith(compareBy({ it.service }, { it.key }, { it.provider }))
+
     fun merge(raw: List<ProviderEntry>): List<ProviderEntry> {
         val out = ArrayList<ProviderEntry>(raw.size)
         val explicitSlots = HashMap<Pair<String, String>, String>()

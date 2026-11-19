@@ -66,4 +66,20 @@ class ProviderTableTest {
 
         assertEquals(listOf("", "vip"), merged.map { it.key })
     }
+
+    @Test
+    fun `default implementations are ordered by provider FQN, not by module order`() {
+        // Simulates aggregation reading a later module first: sorting must still be name-based.
+        val sorted = ProviderTable.sort(
+            listOf(
+                entry("com.zeta.ZetaImpl"),
+                entry("com.alpha.AlphaImpl"),
+            ),
+        )
+
+        assertEquals(
+            listOf("com.alpha.AlphaImpl", "com.zeta.ZetaImpl"),
+            sorted.map { it.provider },
+        )
+    }
 }

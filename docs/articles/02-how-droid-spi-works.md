@@ -120,7 +120,9 @@ return-type requirements are not validated at build time, and a violation fails 
 
 - No pre-scan. Constructing the registry just stores the configuration.
 - `load()` calls `newProviderAt()` directly for every entry of `(service, key)`, returning the
-  first one that works. If the class is absent, `NoClassDefFoundError` is
+  first one that works. Entries are sorted by `(service, key, provider FQN)`, so several default
+  implementations have a deterministic, module-layout-independent order (and the build logs it).
+  If the class is absent, `NoClassDefFoundError` is
   caught and converted to `null`; the next call retries. That is why a newly installed dynamic
   module works without any refresh.
 - `MISSING` is never cached. `READY` is not cached either; providers are instantiated per call,

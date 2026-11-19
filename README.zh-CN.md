@@ -114,6 +114,10 @@ Kotlin 还提供 `ServiceLoader.load<HomeService>()`。所有查询在不可用�
 `load()` 返回当前可用的第一个；`providers()` / `stream()` 会枚举全部条目（`loadAllClasses()`
 也能拿到全部类）。`loadAll()` 对每个 key 保留第一个可用实现。**非空 key 仍然必须唯一**：
 两个 provider 声明同一个显式 key 依然会导致构建失败。
+
+顺序是确定的，且与模块目录布局无关：条目按 `(service, key, provider FQN)` 排序，因此多个默认
+实现按 provider 名称排序。某个 service 存在多个默认实现时，构建日志会打印该顺序。可用性优先于
+顺序：未安装或 `DEAD` 的 provider 即使排序更靠前也会被跳过。
 不会抛异常。
 
 ### 标准 `META-INF/services`

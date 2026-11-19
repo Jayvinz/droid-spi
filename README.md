@@ -117,6 +117,11 @@ every entry (all of them are also available from `loadAllClasses()`). `loadAll()
 available implementation per key. Any **non-empty** key stays unique: two providers declaring the
 same explicit key still fail the build.
 
+The order is deterministic and independent of module layout: entries are sorted by
+`(service, key, provider FQN)`, so several defaults are ordered by provider name. The build logs
+a warning listing that order when a service has more than one default provider. Availability
+still wins over order: an uninstalled or `DEAD` provider is skipped even if it sorts first.
+
 ### Standard `META-INF/services`
 
 Libraries that already ship a JDK SPI file can be integrated without touching their code: put the

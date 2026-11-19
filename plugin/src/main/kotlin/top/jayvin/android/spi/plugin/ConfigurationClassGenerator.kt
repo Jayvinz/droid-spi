@@ -23,7 +23,7 @@ internal object ConfigurationClassGenerator {
 
     /** Generates the configuration class bytecode for [rawEntries]. */
     fun generate(pkg: String, simpleName: String, rawEntries: List<ProviderEntry>): ByteArray {
-        val entries = rawEntries.sortedWith(compareBy({ it.service }, { it.key }))
+        val entries = ProviderTable.sort(rawEntries)
         val owner = if (pkg.isEmpty()) simpleName else "${pkg.toInternalName()}/$simpleName"
 
         val cw = object : ClassWriter(COMPUTE_FRAMES or COMPUTE_MAXS) {
@@ -43,7 +43,9 @@ internal object ConfigurationClassGenerator {
         emitConstructor(cw)
         // services() and keys() are one-to-one per entry: an interface with two keys appears
         // twice in services(), and several default implementations appear with an empty key
-        // each. ProviderRegistry enumerates entries by index.
+        // each. ProviderRegistry enumerates entries by index. ProviderTable.sort orders ties by
+        // provider FQN, so the position of a default implementation does not depend on which
+        // module produced it.
         emitServices(cw, entries.map { it.service })
         emitKeys(cw, entries.map { it.key })
         emitProviderAt(cw, entries)

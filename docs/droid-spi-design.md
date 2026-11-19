@@ -373,6 +373,11 @@ any `MISSING`; only an all-`DEAD` group reports `DEAD`.
 - Any other throwable from the factory (a business exception) → not cached, so the next call
   retries.
 
+Entries are ordered by `(service, key, provider FQN)` before bytecode generation, so several
+default implementations have a layout-independent, deterministic order. The generate task logs a
+warning listing that order whenever a service has more than one default provider; availability
+still wins over it (a `MISSING` or `DEAD` entry is skipped even when it sorts first).
+
 So there is no `refresh()` and no window where "it is installed but the table is stale": after
 a module is installed, the next `load()` succeeds naturally.
 `DEAD` is the only state worth remembering, to avoid repeatedly triggering the same

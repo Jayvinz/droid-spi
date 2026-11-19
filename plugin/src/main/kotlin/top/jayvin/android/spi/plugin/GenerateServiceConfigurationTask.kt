@@ -59,6 +59,18 @@ abstract class GenerateServiceConfigurationTask : DefaultTask() {
         val pkg = packageName.get()
         val simpleName = className.get()
 
+        // Several default implementations are legal, but their order decides which one load()
+        // returns first; make that contract visible in the build log.
+        entries.filter { it.key.isEmpty() }
+            .groupBy { it.service }
+            .filterValues { it.size > 1 }
+            .forEach { (service, group) ->
+                logger.warn(
+                    "spi: $service has ${group.size} default providers; load() returns the first " +
+                        "available in this order: ${ProviderTable.sort(group).joinToString(", ") { it.provider }}",
+                )
+            }
+
         if (entries.isEmpty()) {
             logger.warn("spi: no @ServiceProvider was found; the provider configuration is empty")
         }
