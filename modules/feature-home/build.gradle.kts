@@ -4,6 +4,8 @@ plugins {
     id("top.jayvin.android.spi")
 }
 
+val spiVersion = providers.gradleProperty("spiVersion").get()
+
 android {
     namespace = "com.example.feature.home"
     compileSdk = 35
@@ -33,5 +35,5 @@ android {
 dependencies {
     implementation(project(":modules:core-api"))
     implementation(project(":modules:core-common"))
-    implementation("top.jayvin.android.spi:annotation:$version")
+    implementation("top.jayvin.android.spi:annotation:$spiVersion")
 }

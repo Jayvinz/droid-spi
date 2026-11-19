@@ -4,6 +4,8 @@ plugins {
     id("maven-publish")
 }
 
+apply(from = "../gradle/framework-publishing.gradle.kts")
+
 android {
     namespace = "top.jayvin.android.spi"
     compileSdk = 35

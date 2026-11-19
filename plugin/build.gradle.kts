@@ -4,6 +4,8 @@ plugins {
     id("maven-publish")
 }
 
+apply(from = "../gradle/framework-publishing.gradle.kts")
+
 kotlin {
     jvmToolchain(17)
 }

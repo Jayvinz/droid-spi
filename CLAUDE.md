@@ -56,6 +56,23 @@ Verify the generated artifact (per variant; the path uses the variant name):
 javap -p -c app/build/intermediates/classes/freeDebug/FreeDebugGenerateServiceConfiguration/top/jayvin/android/spi/generated/ServiceConfiguration.class
 ```
 
+## Verification checklist
+
+After any change to scanning, aggregation, artifact wiring, or caching, run the full matrix in
+`docs/android-spi-design.md` §8.1. The minimum gate is:
+
+```bash
+./gradlew :annotation:publish :runtime:publish :plugin:publish
+./gradlew :runtime:testDebugUnitTest --rerun-tasks
+./gradlew clean :app:assembleFreeDebug :app:assemblePaidDebug :app:assembleFreeRelease :app:assemblePaidRelease
+./gradlew :app:assembleFreeDebug --configuration-cache
+./gradlew :app:assembleFreeDebug --configuration-cache -Dorg.gradle.unsafe.isolated-projects=true
+```
+
+Then add and remove a temporary `@ServiceProvider` once with each cache mode to prove the
+scan → generate edges survive, inspect the generated classes and APK contents, and re-run the
+four-variant on-device self-check screen.
+
 ## Module layout
 
 Single Gradle build; `settings.gradle.kts` includes everything:
@@ -83,12 +100,16 @@ Single Gradle build; `settings.gradle.kts` includes everything:
 2. **Application modules only** register `{variantName}GenerateServiceConfiguration` per variant.
    It reads the manifests of every compatible module variant, validates `(service, key)`
    uniqueness (a duplicate fails the build), and generates the class with ASM.
-3. Each module registers its per-variant entries (buildType, flavor dimensions, manifest) in
-   the root project's `spiRoot` extension as a flat list. After
-   `projectsEvaluated` the generate task takes the entries whose buildType matches and whose
-   flavor dimensions all match the application variant (a module without flavors matches every
-   application flavor). The generate task outputs bytecode via `toAppend(ScopedArtifact.CLASSES)`
-   on **its own variant** and does not read the `CLASSES` input, so the task graph has no cycle.
+3. Manifests travel through Gradle's variant-aware artifact resolution, not a cross-project
+   collector. Each module variant publishes its `services.txt` as a `spi-manifest`-typed artifact
+   on `{variant}RuntimeElements`; the app's generate task takes an artifact view of
+   `variant.runtimeConfiguration` filtered by that type (transitive, and non-plugin modules
+   contribute nothing). Dynamic features have no runtime edge into the app, so the app declares
+   a dependency for every path in its own `dynamicFeatures` DSL at `projectsEvaluated` and takes
+   the same artifact-type-filtered view of their runtime elements; a feature that does not apply
+   the plugin simply contributes no manifest. The generate task outputs bytecode via
+   `toAppend(ScopedArtifact.CLASSES)` on **its own variant** and does not read the `CLASSES`
+   input, so the task graph has no cycle.
 
 **Aggregation is per variant, not per build type**: `freeDebug` and `paidDebug` compile disjoint
 flavor sources and get separate tables and separate generated classes. Every variant wires its
@@ -169,7 +190,13 @@ These are correctness red lines, not style preferences:
 - Variant matching: a module variant whose flavor dimension is missing from the application
   variant is not aggregated (AGP would not variant-match such a dependency either). Modules
   without flavors match every application flavor. Dynamic features must declare the same flavor
-  dimensions as `:app`.
+  dimensions as `:app`; a dynamic feature that does not apply the SPI plugin simply contributes
+  no providers (its runtime elements carry no `spi-manifest` artifact).
+- Manifest transport must stay artifact-based. Do not replace it with a root-project extension or
+  a shared build service holding other projects' `Provider<RegularFile>`: under
+  configuration-cache reuse, especially with isolated projects, Gradle serializes such
+  cross-project providers as plain files, the scan tasks silently leave the task graph, and stale
+  manifests reach the generator.
 - `ServiceLoader.initialize()` directly runs `new` on the fixed class name
   `top.jayvin.android.spi.generated.ServiceConfiguration`; runtime compiles against the
   `configuration-stub` compileOnly placeholder, and the placeholder is never packaged.
