@@ -83,6 +83,7 @@ Single Gradle build; `settings.gradle.kts` includes everything:
 | `runtime/` | `ServiceLoader` facade and `ProviderRegistry` on-demand probing (Android Library, no Play Core dependency) |
 | `plugin/` | Gradle plugin: `SpiPlugin`, scan tasks, ASM generator, `java-gradle-plugin` |
 | `configuration-stub/` | compileOnly placeholder class for runtime (same `ServiceConfiguration` name; not published, not packaged) |
+| `buildSrc/` | Convention plugins shared by the framework modules (`framework-publishing`: group, version, local-repo). A precompiled script plugin resolves Gradle API types in the IDE, unlike an applied `gradle/*.gradle.kts` script |
 | `app/` | Demo application module; the only module registering the generate task; its Application calls `ServiceLoader.initialize()`. It declares the `channel` flavor dimension (`free` / `paid`) and its self-check screen (`MainActivity`) is the on-device UI test matrix |
 | `modules/core-api/` | All service **interfaces** (must live in base) |
 | `modules/core-common/` | Resident library example that only has `META-INF/services` configuration |
