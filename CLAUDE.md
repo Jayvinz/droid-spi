@@ -11,7 +11,7 @@ user explicitly asks for it, or for an explicitly maintained translation such as
 
 ## Project overview
 
-**droid-spi** is a **compile-time SPI (ServiceLoader) framework** for Android AAB / multi-module
+**Droid-spi** is a **compile-time SPI (ServiceLoader) framework** for Android AAB / multi-module
 projects.
 Each module applies the Gradle plugin, which scans `@ServiceProvider` annotations and
 `META-INF/services/` text files under the module's source directories. The app module
@@ -28,7 +28,7 @@ User documentation: `README.md` (Chinese: `README.zh-CN.md`)
 (terminology mapping, integration steps, known limitations). Long-form articles live in
 `docs/articles/` in both languages.
 
-Published coordinates (the brand is `droid-spi`; the Java package is deliberately decoupled
+Published coordinates (the brand is `Droid-spi`; the Java package is deliberately decoupled
 from it and stays `top.jayvin.android.spi`):
 
 - Gradle plugin id: `top.jayvin.droidspi`

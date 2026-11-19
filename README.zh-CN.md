@@ -1,4 +1,4 @@
-# droid-spi
+# Droid-spi
 
 [![CI](https://github.com/Jayvinz/droid-spi/actions/workflows/ci.yml/badge.svg)](https://github.com/Jayvinz/droid-spi/actions/workflows/ci.yml)
 
@@ -152,7 +152,7 @@ dynamic feature 模块同样需要 apply 插件（编译期只需要 `annotation
 完整设计、不变量、缓存与 isolated-projects 说明、回归矩阵：
 [docs/droid-spi-design.zh-CN.md](docs/droid-spi-design.zh-CN.md) · [English](docs/droid-spi-design.md)。
 
-长文： [droid-spi 介绍](docs/articles/01-introducing-droid-spi.zh-CN.md) ·
+长文： [Droid-spi 介绍](docs/articles/01-introducing-droid-spi.zh-CN.md) ·
 [实现原理](docs/articles/02-how-droid-spi-works.zh-CN.md)
 （[English](docs/articles/01-introducing-droid-spi.md) ·
 [English](docs/articles/02-how-droid-spi-works.md)）。

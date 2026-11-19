@@ -1,8 +1,8 @@
-# droid-spi · Design
+# Droid-spi · Design
 
 > A compile-time provider configuration table for AAB multi-module projects. Naming follows
 > the SPI vocabulary of `java.util.ServiceLoader`.
-> Implementation: the `droid-spi` repository (`app/` + `modules/` are the
+> Implementation: the `Droid-spi` repository (`app/` + `modules/` are the
 > demo, `annotation` / `runtime` / `plugin` are the framework, all in a single build).
 > Core traits: **zero reflection — `Class.forName` is never used and providers are constructed
 > through a direct `new` / `INVOKESTATIC`, never reflective constructor or method calls; zero

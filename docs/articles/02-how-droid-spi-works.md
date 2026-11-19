@@ -1,4 +1,4 @@
-# How droid-spi works internally: artifact transport, ASM, and JVM class initialization
+# How Droid-spi works internally: artifact transport, ASM, and JVM class initialization
 
 *A deep dive into the pipeline behind a compile-time SPI for Android: why manifests travel as
 Gradle artifacts, why the generated class must not have a static initializer, and how the
@@ -6,7 +6,7 @@ configuration cache and isolated projects shaped the design.*
 
 ---
 
-The [first article](01-introducing-droid-spi.md) showed what `droid-spi` does. This one is about
+The [first article](01-introducing-droid-spi.md) showed what `Droid-spi` does. This one is about
 how it is built, and why several obvious implementations are wrong.
 
 The project has three modules: `annotation` (two plain Java annotations), `runtime` (the
@@ -155,7 +155,7 @@ runtime.
 - **Interfaces must live in base.** A service interface in a dynamic module would make the table
   unresolvable before installation.
 - **Descriptive, not magical.** There is no scope, lifecycle, or constructor injection. If your
-  graph is fully installed at build time, use Hilt or Dagger. `droid-spi` is for the part of the
+  graph is fully installed at build time, use Hilt or Dagger. `Droid-spi` is for the part of the
   graph that is *not* guaranteed to be in the process.
 
 The implementation is intentionally small enough to read in an afternoon: a scanner, an ASM

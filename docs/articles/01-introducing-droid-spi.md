@@ -1,6 +1,6 @@
 # Compile-time service discovery for Android — without reflection or KSP
 
-*Meet droid-spi: a small Gradle plugin that gives Java/Kotlin modules the JDK `ServiceLoader`
+*Meet Droid-spi: a small Gradle plugin that gives Java/Kotlin modules the JDK `ServiceLoader`
 experience, keeps working when the provider lives in a dynamic feature module, and adds nothing
 to your runtime hot path.*
 
@@ -20,7 +20,7 @@ closed at compile time and do not model "this class is not installed yet"; AutoS
 a `META-INF/services` file that the Android runtime cannot read from an AAR without extra work,
 and it has no variant or dynamic-delivery story.
 
-`droid-spi` takes the ServiceLoader idea and moves the provider table to build time.
+`Droid-spi` takes the ServiceLoader idea and moves the provider table to build time.
 
 ## What it looks like
 
@@ -74,7 +74,7 @@ A dynamic feature module depends on the base app, not the other way around. The 
 compile against `CameraServiceImpl` because the class is not on its compile classpath. So how
 does base code call it?
 
-`droid-spi` resolves the contradiction at build time:
+`Droid-spi` resolves the contradiction at build time:
 
 1. Every module variant scans its own sources and writes a small manifest.
 2. The application variant aggregates all compatible manifests and generates one class,
@@ -143,6 +143,6 @@ modular apps, variant-specific implementations — that is exactly the gap this 
 
 ---
 
-*Next: [How droid-spi works internally](02-how-droid-spi-works.md) — artifact transport,
+*Next: [How Droid-spi works internally](02-how-droid-spi-works.md) — artifact transport,
 bytecode generation, JVM class-initialization semantics, and the cache/isolation rules that
 keep the pipeline correct.*

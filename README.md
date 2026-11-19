@@ -1,4 +1,4 @@
-# droid-spi
+# Droid-spi
 
 [![CI](https://github.com/Jayvinz/droid-spi/actions/workflows/ci.yml/badge.svg)](https://github.com/Jayvinz/droid-spi/actions/workflows/ci.yml)
 
@@ -155,7 +155,7 @@ per module, per variant                app, per variant                  runtime
 Full design, invariants, cache/isolation notes and the regression matrix:
 [docs/droid-spi-design.md](docs/droid-spi-design.md) · [中文](docs/droid-spi-design.zh-CN.md).
 
-Long-form articles: [Introducing droid-spi](docs/articles/01-introducing-droid-spi.md) ·
+Long-form articles: [Introducing Droid-spi](docs/articles/01-introducing-droid-spi.md) ·
 [How it works internally](docs/articles/02-how-droid-spi-works.md)
 ([中文](docs/articles/01-introducing-droid-spi.zh-CN.md) ·
 [中文](docs/articles/02-how-droid-spi-works.zh-CN.md)).

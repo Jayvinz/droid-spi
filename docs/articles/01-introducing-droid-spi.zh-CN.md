@@ -1,6 +1,6 @@
 # Android 编译期服务发现——不依赖反射，也不用 KSP
 
-*认识 droid-spi：一个小巧的 Gradle 插件，为 Java/Kotlin 模块带来 JDK `ServiceLoader` 的使用体验，
+*认识 Droid-spi：一个小巧的 Gradle 插件，为 Java/Kotlin 模块带来 JDK `ServiceLoader` 的使用体验，
 即使 provider 位于动态功能模块中也能正常工作，而且不会给运行时热路径增加任何开销。*
 
 ---
@@ -16,7 +16,7 @@
 AutoService 生成 `META-INF/services` 文件，而 Android 运行时无法直接从 AAR 中读取它，需要额外处理，
 并且它既没有变体概念，也没有动态下发的方案。
 
-`droid-spi` 沿用 ServiceLoader 的思路，把 provider 表前移到构建期。
+`Droid-spi` 沿用 ServiceLoader 的思路，把 provider 表前移到构建期。
 
 ## 使用起来是什么样
 
@@ -69,7 +69,7 @@ val all  = ServiceLoader.loadAll(HomeService::class.java)       // key -> 实例
 动态功能模块依赖 base 应用，而不是反过来。base 无法针对 `CameraServiceImpl` 编译，因为这个类
 不在它的编译类路径上。那么 base 中的代码要怎么调用它？
 
-`droid-spi` 在构建期化解了这个矛盾：
+`Droid-spi` 在构建期化解了这个矛盾：
 
 1. 每个模块变体扫描自己的源码，写出一份小清单。
 2. 应用变体聚合所有兼容的清单，生成一个固定全限定名的类 `ServiceConfiguration`。
@@ -132,5 +132,5 @@ dependencies {
 
 ---
 
-*下一篇：[droid-spi 的内部实现](02-how-droid-spi-works.zh-CN.md)——artifact 传输、字节码生成、
+*下一篇：[Droid-spi 的内部实现](02-how-droid-spi-works.zh-CN.md)——artifact 传输、字节码生成、
 JVM 类初始化语义，以及让整条流水线保持正确的缓存与隔离规则。*
