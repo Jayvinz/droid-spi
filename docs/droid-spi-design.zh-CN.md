@@ -1,13 +1,13 @@
-# Android SPI ServiceLoader · 设计方案
+# droid-spi · 设计方案
 
 > 面向 AAB 多模块工程的**编译期 provider 配置表**。命名对齐 `java.util.ServiceLoader` 的 SPI 词汇。
-> 实现代码：`android-spi/`；示例工程：`android-spi/`（`app/` + `modules/` 为 demo，
+> 实现代码位于 `droid-spi` 仓库（`app/` + `modules/` 为 demo，
 > `annotation` / `runtime` / `plugin` 为框架本体，单一 build）。
 > 核心特征：**零反射——从不使用 `Class.forName`，provider 通过直接 `new` / `INVOKESTATIC`
 > 构造，不使用任何反射构造函数或反射方法调用；零 APT/KSP；零第三方 jar 扫描；元数据以类字面量
 > 表达；provider 按需探测**。
 >
-> English version: [android-spi-design.md](android-spi-design.md)
+> English version: [droid-spi-design.md](droid-spi-design.md)
 >
 > 本文为英文设计文档的中文翻译；如与英文版有出入，以英文版为准。
 
@@ -203,7 +203,7 @@ your-module/src/main/resources/META-INF/services/com.example.core.api.LegacyServ
 每条配置映射成 `ProviderEntry(service, provider, "", "")`，之后与注解来源完全同路：
 进入模块清单 → 聚合校验 → 生成 class 的 `providerOf` / `newProvider`。运行时无差别。
 
-前置条件：该模块必须 apply `top.jayvin.android.spi` 插件（否则没有 `{variantName}ScanProviders` 任务）。
+前置条件：该模块必须 apply `top.jayvin.droidspi` 插件（否则没有 `{variantName}ScanProviders` 任务）。
 `modules/core-common` 就是只有 SPI 配置、没有注解的最小示例 —— 它的清单输出为：
 
 ```

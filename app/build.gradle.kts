@@ -1,7 +1,7 @@
 plugins {
     id("com.android.application")
     id("org.jetbrains.kotlin.android")
-    id("top.jayvin.android.spi")
+    id("top.jayvin.droidspi")
 }
 
 val spiVersion = providers.gradleProperty("spiVersion").get()
@@ -72,8 +72,8 @@ dependencies {
     implementation(project(":modules:feature-home"))
     implementation(project(":modules:feature-account"))
 
-    implementation("top.jayvin.android.spi:annotation:$spiVersion")
-    implementation("top.jayvin.android.spi:runtime:$spiVersion")
+    implementation("top.jayvin.droidspi:annotation:$spiVersion")
+    implementation("top.jayvin.droidspi:runtime:$spiVersion")
     // The demo owns dynamic-module installation and visibility.
     implementation("com.google.android.play:feature-delivery:2.1.0")
 }

@@ -1,7 +1,7 @@
 plugins {
     id("com.android.dynamic-feature")
     id("org.jetbrains.kotlin.android")
-    id("top.jayvin.android.spi")
+    id("top.jayvin.droidspi")
 }
 
 val spiVersion = providers.gradleProperty("spiVersion").get()
@@ -36,5 +36,5 @@ dependencies {
     implementation(project(":app"))
     implementation(project(":modules:core-api"))
     implementation(project(":modules:core-common"))
-    implementation("top.jayvin.android.spi:annotation:$spiVersion")
+    implementation("top.jayvin.droidspi:annotation:$spiVersion")
 }

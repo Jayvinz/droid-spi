@@ -7,11 +7,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 Prefer English for all code comments, KDoc/Javadoc, README and design documents, and
 developer-facing diagnostics (log and exception messages). Use another language only when the
 user explicitly asks for it, or for an explicitly maintained translation such as
-`docs/android-spi-design.zh-CN.md`.
+`docs/droid-spi-design.zh-CN.md`.
 
 ## Project overview
 
-A **compile-time SPI (ServiceLoader) framework** for Android AAB / multi-module projects.
+**droid-spi** is a **compile-time SPI (ServiceLoader) framework** for Android AAB / multi-module
+projects.
 Each module applies the Gradle plugin, which scans `@ServiceProvider` annotations and
 `META-INF/services/` text files under the module's source directories. The app module
 aggregates all manifests into a `ServiceConfiguration` class with a fixed fully-qualified
@@ -22,9 +23,16 @@ module is installed, the next `load()` succeeds without any refresh. Both the co
 class and providers are referenced through class literals (`new` / `ldc`); there is no
 `Class.forName` and no reflective provider construction anywhere.
 
-Design document: `docs/android-spi-design.md` (Chinese: `docs/android-spi-design.zh-CN.md`).
+Design document: `docs/droid-spi-design.md` (Chinese: `docs/droid-spi-design.zh-CN.md`).
 User documentation: `README.md`
 (terminology mapping, integration steps, known limitations).
+
+Published coordinates (the brand is `droid-spi`; the Java package is deliberately decoupled
+from it and stays `top.jayvin.android.spi`):
+
+- Gradle plugin id: `top.jayvin.droidspi`
+- Maven group: `top.jayvin.droidspi`; artifacts `annotation`, `runtime`, `plugin`
+- Generated configuration class: `top.jayvin.android.spi.generated.ServiceConfiguration`
 
 ## Common commands
 
@@ -46,7 +54,11 @@ User documentation: `README.md`
 ```
 
 On Windows use `gradlew.bat`. `local-repo/` is gitignored, so **building `:app` right after a
-fresh clone fails**; run the publish command above first. `plugin` has no test sources;
+fresh clone fails**; run the publish command first. On a fresh clone (or after deleting
+`local-repo/`) that publish needs `--configure-on-demand`, because the demo modules apply the
+plugin being published: `./gradlew :annotation:publish :runtime:publish :plugin:publish
+--configure-on-demand`. The flag is unnecessary once the plugin exists in `local-repo/`.
+`plugin` has no test sources;
 the `runtime` tests are plain JVM unit tests that use a fake `ProviderConfiguration` to
 simulate "module not installed", so no device or emulator is needed.
 
@@ -59,7 +71,7 @@ javap -p -c app/build/intermediates/classes/freeDebug/FreeDebugGenerateServiceCo
 ## Verification checklist
 
 After any change to scanning, aggregation, artifact wiring, or caching, run the full matrix in
-`docs/android-spi-design.md` §8.1. The minimum gate is:
+`docs/droid-spi-design.md` §8.1. The minimum gate is:
 
 ```bash
 ./gradlew :annotation:publish :runtime:publish :plugin:publish

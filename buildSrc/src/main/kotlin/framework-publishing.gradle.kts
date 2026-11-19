@@ -13,7 +13,7 @@ plugins {
 // Everything below is project-local (module-relative path, Gradle property), so it stays
 // compatible with isolated projects; no project reads another project's model.
 
-group = "top.jayvin.android.spi"
+group = "top.jayvin.droidspi"
 version = providers.gradleProperty("spiVersion").get()
 
 publishing {

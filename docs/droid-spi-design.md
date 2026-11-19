@@ -1,15 +1,15 @@
-# Android SPI ServiceLoader · Design
+# droid-spi · Design
 
 > A compile-time provider configuration table for AAB multi-module projects. Naming follows
 > the SPI vocabulary of `java.util.ServiceLoader`.
-> Implementation: `android-spi/`; sample project: `android-spi/` (`app/` + `modules/` are the
+> Implementation: the `droid-spi` repository (`app/` + `modules/` are the
 > demo, `annotation` / `runtime` / `plugin` are the framework, all in a single build).
 > Core traits: **zero reflection — `Class.forName` is never used and providers are constructed
 > through a direct `new` / `INVOKESTATIC`, never reflective constructor or method calls; zero
 > APT/KSP; zero third-party jar scanning; metadata via class literals; providers probed on
 > demand**.
 >
-> 中文版：[android-spi-design.zh-CN.md](android-spi-design.zh-CN.md)
+> 中文版：[droid-spi-design.zh-CN.md](droid-spi-design.zh-CN.md)
 
 ---
 
@@ -218,7 +218,7 @@ Each config entry maps to `ProviderEntry(service, provider, "", "")` and then fo
 the same path as annotation entries: module manifest → aggregation validation → generated
 `providerOf` / `newProvider`. Runtime behavior is identical.
 
-Prerequisite: the module must apply the `top.jayvin.android.spi` plugin (otherwise there is no
+Prerequisite: the module must apply the `top.jayvin.droidspi` plugin (otherwise there is no
 `{variantName}ScanProviders` task). `modules/core-common` is the minimal example with SPI config only and
 no annotations — its manifest output is:
 

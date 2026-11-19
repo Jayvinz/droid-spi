@@ -1,7 +1,7 @@
 plugins {
     id("com.android.library")
     id("org.jetbrains.kotlin.android")
-    id("top.jayvin.android.spi")
+    id("top.jayvin.droidspi")
 }
 
 val spiVersion = providers.gradleProperty("spiVersion").get()
@@ -35,5 +35,5 @@ android {
 dependencies {
     implementation(project(":modules:core-api"))
     implementation(project(":modules:core-common"))
-    implementation("top.jayvin.android.spi:annotation:$spiVersion")
+    implementation("top.jayvin.droidspi:annotation:$spiVersion")
 }

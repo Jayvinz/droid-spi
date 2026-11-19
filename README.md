@@ -1,4 +1,6 @@
-# Android SPI ServiceLoader
+# droid-spi
+
+Compile-time SPI (ServiceLoader) for Android — provider discovery without reflection.
 
 A **compile-time provider configuration table** for Android AAB multi-module projects.
 The naming follows the SPI vocabulary of `java.util.ServiceLoader`
@@ -15,8 +17,8 @@ Providers are referenced through class literals too, so there is no `Class.forNa
 reflective constructor or method call anywhere.
 
 > For the full design background, JVM semantics and comparison with other solutions, see
-> [docs/android-spi-design.md](docs/android-spi-design.md)
-> ([中文版](docs/android-spi-design.zh-CN.md)).
+> [docs/droid-spi-design.md](docs/droid-spi-design.md)
+> ([中文版](docs/droid-spi-design.zh-CN.md)).
 
 ```
 Scan (per module variant)                     Aggregate (app, per variant)    Runtime
@@ -44,7 +46,7 @@ model the intermediate states of dynamic delivery.
 ## Layout
 
 ```
-android-spi/                       Single Gradle build; all modules included in settings.gradle.kts
+droid-spi/                         Single Gradle build; all modules included in settings.gradle.kts
 ├── annotation/                     Framework: @ServiceProvider / @ProviderFactory (plain Java annotations, zero dependencies)
 ├── runtime/                        Framework: ServiceLoader facade + on-demand provider probing (Android Library)
 ├── plugin/                         Framework: scanning and generation (Gradle Plugin, ASM bytecode)
@@ -68,8 +70,9 @@ Gradle module paths map one-to-one to directories: `:app`, `:modules:core-api`,
 
 ```bash
 # 1. Publish the three framework modules to the local Maven repo (local-repo/);
-#    demo modules consume the plugin from the same repository
-./gradlew :annotation:publish :runtime:publish :plugin:publish
+#    demo modules consume the plugin from the same repository.
+#    On a fresh clone the flag is required: demo modules apply a plugin that is not published yet.
+./gradlew :annotation:publish :runtime:publish :plugin:publish --configure-on-demand
 
 # 2. Build the demo (in the same build); flavors are free / paid, build types debug / release
 ./gradlew :app:assembleFreeDebug      # one APK
@@ -136,7 +139,7 @@ proves the table.
 "Camera module" drives the dynamic-install path; a sideloaded APK has no Play Store, so it must
 fail gracefully (logged, no crash). Screenshots from the verification run are written to
 `build/ui-test/` (gitignored). The full regression matrix (builds, caches, bytecode/APK checks,
-on-device UI) is documented in `docs/android-spi-design.md` §8.1 and should be re-run after
+on-device UI) is documented in `docs/droid-spi-design.md` §8.1 and should be re-run after
 major plugin changes.
 
 
@@ -148,12 +151,12 @@ major plugin changes.
 plugins {
     id("com.android.application")     // same for library / dynamic-feature
     id("org.jetbrains.kotlin.android")
-    id("top.jayvin.android.spi")
+    id("top.jayvin.droidspi")
 }
 
 dependencies {
-    implementation("top.jayvin.android.spi:annotation:1.0.0")
-    implementation("top.jayvin.android.spi:runtime:1.0.0")
+    implementation("top.jayvin.droidspi:annotation:1.0.0")
+    implementation("top.jayvin.droidspi:runtime:1.0.0")
 }
 ```
 
@@ -283,7 +286,7 @@ Key points:
   deduplicated rather than treated as a conflict; different implementations competing for the
   same `(service, key="")` still fail the build.
 
-> That module must apply the `top.jayvin.android.spi` plugin, otherwise there is no
+> That module must apply the `top.jayvin.droidspi` plugin, otherwise there is no
 > `{variant}ScanProviders` task and the configuration is not scanned.
 > `modules/core-common` is the minimal example that only has SPI configuration and no annotations.
 

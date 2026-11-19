@@ -17,9 +17,9 @@ dependencies {
 gradlePlugin {
     plugins {
         create("spi") {
-            id = "top.jayvin.android.spi"
-            displayName = "Android SPI service loader"
-            description = "Scans @ServiceProvider at compile time and generates a fixed-FQN provider configuration class"
+            id = "top.jayvin.droidspi"
+            displayName = "droid-spi"
+            description = "Compile-time SPI for Android: scans @ServiceProvider and generates a fixed-FQN provider configuration class"
             implementationClass = "top.jayvin.android.spi.plugin.SpiPlugin"
         }
     }

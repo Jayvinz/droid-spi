@@ -1,7 +1,7 @@
 pluginManagement {
     // Framework version is defined once in gradle.properties (spiVersion).
     plugins {
-        id("top.jayvin.android.spi") version providers.gradleProperty("spiVersion").get()
+        id("top.jayvin.droidspi") version providers.gradleProperty("spiVersion").get()
     }
     repositories {
         // The framework is published here; demo modules consume the plugin from the same repository
@@ -31,7 +31,7 @@ dependencyResolutionManagement {
     }
 }
 
-rootProject.name = "android-spi"
+rootProject.name = "droid-spi"
 
 // Framework modules (libraries)
 include(":annotation")

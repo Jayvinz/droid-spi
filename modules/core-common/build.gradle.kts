@@ -3,7 +3,7 @@ plugins {
     id("org.jetbrains.kotlin.android")
     // core-common has no @ServiceProvider annotations, but needs the plugin to scan
     // src/main/resources/META-INF/services
-    id("top.jayvin.android.spi")
+    id("top.jayvin.droidspi")
 }
 
 android {

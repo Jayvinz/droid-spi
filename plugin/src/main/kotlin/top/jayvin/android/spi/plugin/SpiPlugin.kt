@@ -16,7 +16,7 @@ import org.gradle.api.provider.Provider
 import org.gradle.api.tasks.TaskProvider
 
 /**
- * The `top.jayvin.android.spi` plugin.
+ * The `top.jayvin.droidspi` plugin.
  *
  * Applied once per Android module:
  * - Every module (library / dynamic-feature / application) registers `{variant}ScanProviders`
