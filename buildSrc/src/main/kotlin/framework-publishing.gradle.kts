@@ -22,5 +22,19 @@ publishing {
             name = "local"
             url = layout.projectDirectory.dir("../local-repo").asFile.toURI()
         }
+        // CI-only: the release workflow passes GITHUB_TOKEN and GITHUB_REPOSITORY, which makes
+        // every module also publish to GitHub Packages. Local publish runs stay single-repository.
+        val githubToken = System.getenv("GITHUB_TOKEN")
+        val githubRepository = System.getenv("GITHUB_REPOSITORY")
+        if (!githubToken.isNullOrEmpty() && !githubRepository.isNullOrEmpty()) {
+            maven {
+                name = "github"
+                url = uri("https://maven.pkg.github.com/$githubRepository")
+                credentials {
+                    username = System.getenv("GITHUB_ACTOR") ?: "github-actions"
+                    password = githubToken
+                }
+            }
+        }
     }
 }

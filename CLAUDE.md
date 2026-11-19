@@ -24,8 +24,9 @@ class and providers are referenced through class literals (`new` / `ldc`); there
 `Class.forName` and no reflective provider construction anywhere.
 
 Design document: `docs/droid-spi-design.md` (Chinese: `docs/droid-spi-design.zh-CN.md`).
-User documentation: `README.md`
-(terminology mapping, integration steps, known limitations).
+User documentation: `README.md` (Chinese: `README.zh-CN.md`)
+(terminology mapping, integration steps, known limitations). Long-form articles live in
+`docs/articles/` in both languages.
 
 Published coordinates (the brand is `droid-spi`; the Java package is deliberately decoupled
 from it and stays `top.jayvin.android.spi`):
@@ -84,6 +85,22 @@ After any change to scanning, aggregation, artifact wiring, or caching, run the 
 Then add and remove a temporary `@ServiceProvider` once with each cache mode to prove the
 scan → generate edges survive, inspect the generated classes and APK contents, and re-run the
 four-variant on-device self-check screen.
+
+## CI and release
+
+`.github/workflows/ci.yml` runs on every push and pull request: it publishes the framework to
+`local-repo` (with `--configure-on-demand`), runs the runtime unit tests, assembles all four
+variants, and repeats the build with configuration cache and isolated projects.
+
+`.github/workflows/release.yml` runs on a `v*` tag. It verifies that the tag equals
+`v$spiVersion`, publishes `annotation` / `runtime` / `plugin` to GitHub Packages
+(`https://maven.pkg.github.com/Garenzhou/android-spi`) using the workflow `GITHUB_TOKEN`
+(`packages: write`), and attaches the jars/AAR to the GitHub Release. Local publishes are
+unaffected: the GitHub repository is added only when both `GITHUB_TOKEN` and
+`GITHUB_REPOSITORY` are set.
+
+To cut a release: bump `spiVersion` in `gradle.properties`, commit, create and push the tag
+(`git tag v1.0.0-alpha01 && git push origin v1.0.0-alpha01`).
 
 ## Module layout
 

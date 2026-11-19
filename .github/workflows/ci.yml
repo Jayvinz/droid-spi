@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: android-actions/setup-android@v3
+
+      - uses: gradle/actions/setup-gradle@v4
+
+      # local-repo/ is gitignored, so the framework must be published before the demo modules
+      # can resolve the plugin. --configure-on-demand keeps the not-yet-published plugin from
+      # being resolved while :annotation/:runtime/:plugin are being built.
+      - name: Publish framework to the local repository
+        run: ./gradlew :annotation:publish :runtime:publish :plugin:publish --configure-on-demand
+
+      - name: Unit tests
+        run: ./gradlew :runtime:testDebugUnitTest
+
+      - name: Assemble every variant
+        run: ./gradlew :app:assembleFreeDebug :app:assemblePaidDebug :app:assembleFreeRelease :app:assemblePaidRelease
+
+      - name: Configuration cache and isolated projects
+        run: |
+          ./gradlew :app:assembleFreeDebug --configuration-cache
+          ./gradlew :app:assembleFreeDebug --configuration-cache -Dorg.gradle.unsafe.isolated-projects=true
+
+      - name: Upload test reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-reports
+          path: |
+            runtime/build/reports/tests/
+            app/build/reports/
+          if-no-files-found: ignore
