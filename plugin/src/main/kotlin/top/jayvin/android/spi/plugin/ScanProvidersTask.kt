@@ -11,7 +11,8 @@ import org.gradle.api.tasks.PathSensitivity
 import org.gradle.api.tasks.TaskAction
 
 /**
- * Scan task for a single module: reads only this module's `src/main` sources and produces a
+ * Scan task for a single module variant: reads that variant's declared static sources
+ * (`main` plus build type / flavor overlays, wired from `variant.sources`) and produces a
  * `service \t provider \t key \t factory` manifest.
  *
  * The manifest is **deterministic output** (sorted, no timestamps), so downstream generation

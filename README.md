@@ -19,7 +19,7 @@ reflective constructor or method call anywhere.
 > ([中文版](docs/android-spi-design.zh-CN.md)).
 
 ```
-Scan (per module)                              Aggregate (app)                 Runtime
+Scan (per module variant)                     Aggregate (app, per variant)    Runtime
 @ServiceProvider ─┐                                                        Application.onCreate
                   ├─scan─▶ manifest ─merge─▶ ServiceConfiguration.class ─dex─▶   └─▶ initialize()
 META-INF/services ─┘                                                            (new ServiceConfiguration)
@@ -49,7 +49,8 @@ android-spi/                       Single Gradle build; all modules included in 
 ├── runtime/                        Framework: ServiceLoader facade + on-demand provider probing (Android Library)
 ├── plugin/                         Framework: scanning and generation (Gradle Plugin, ASM bytecode)
 ├── configuration-stub/            compileOnly placeholder for runtime (never packaged into APK/AAR)
-├── app/                           Demo main module (consumer): Application calls initialize()
+├── app/                           Demo main module (consumer): Application calls initialize();
+│                                  two flavors (free / paid) and the on-device self-check screen
 ├── modules/                       Demo non-main modules live here
 │   ├── core-api/                  Service interface layer (every @ServiceProvider service lives here)
 │   ├── core-common/               Resident library (contains the META-INF/services example)
@@ -70,9 +71,10 @@ Gradle module paths map one-to-one to directories: `:app`, `:modules:core-api`,
 #    demo modules consume the plugin from the same repository
 ./gradlew :annotation:publish :runtime:publish :plugin:publish
 
-# 2. Build the demo (in the same build)
-./gradlew :app:assembleDebug      # APK
-./gradlew :app:bundleDebug        # AAB (with the feature_camera split)
+# 2. Build the demo (in the same build); flavors are free / paid, build types debug / release
+./gradlew :app:assembleFreeDebug      # one APK
+./gradlew :app:assembleFreeDebug :app:assemblePaidDebug :app:assembleFreeRelease :app:assemblePaidRelease
+./gradlew :app:bundleFreeDebug        # AAB (with the feature_camera split)
 ```
 
 Run tests:
@@ -85,14 +87,56 @@ Inspect the artifacts:
 
 ```bash
 # Configuration bytecode: implementation classes are only referenced inside method bodies, no <clinit>
-javap -p -c app/build/intermediates/classes/debug/DebugGenerateServiceConfiguration/top/jayvin/android/spi/generated/ServiceConfiguration.class
+# The path is per variant: intermediates/classes/{variant}/{Variant}GenerateServiceConfiguration/...
+javap -p -c app/build/intermediates/classes/freeDebug/FreeDebugGenerateServiceConfiguration/top/jayvin/android/spi/generated/ServiceConfiguration.class
 
 # Confirm providers are in the APK and the configuration class is in the base dex
-"D:/Android/Sdk/build-tools/35.0.0/aapt2.exe" dump xmltree app/build/outputs/apk/debug/app-debug.apk --file AndroidManifest.xml
+"D:/Android/Sdk/build-tools/35.0.0/aapt2.exe" dump xmltree app/build/outputs/apk/free/debug/app-free-debug.apk --file AndroidManifest.xml
 ```
 
 > The configuration class no longer appears in the manifest; the manifest only needs the
 > Application that calls `ServiceLoader.initialize()`.
+
+## Demo variant matrix and on-device self-check
+
+The demo exercises **every buildType × flavor combination**. The app declares the `channel`
+dimension (`free` / `paid`), `feature-home` and the `feature_camera` dynamic feature declare the
+same dimension, and `app/src/debug` contributes a debug-only provider. Each variant therefore
+gets its own scan, its own table, and its own generated class.
+
+```bash
+./gradlew :app:assembleFreeDebug :app:assemblePaidDebug :app:assembleFreeRelease :app:assemblePaidRelease
+
+adb install -r app/build/outputs/apk/free/debug/app-free-debug.apk        # com.example.demo.free.debug
+adb install -r app/build/outputs/apk/paid/debug/app-paid-debug.apk        # com.example.demo.paid.debug
+adb install -r app/build/outputs/apk/free/release/app-free-release.apk    # com.example.demo.free
+adb install -r app/build/outputs/apk/paid/release/app-paid-release.apk    # com.example.demo.paid
+```
+
+The release variants are signed with the debug key so they can be installed on a device (demo
+only). `MainActivity` is the UI test: it runs the checks at startup and renders
+`SELF-CHECK PASS n/n` followed by one line per case, so a screenshot identifies the variant and
+proves the table.
+
+| ID | What it proves | freeDebug | paidDebug | freeRelease | paidRelease |
+|---|---|---|---|---|---|
+| C01 | registry initialized, table non-empty | 8 entries | 8 entries | 7 entries | 7 entries |
+| C02 | `HomeService` default annotation provider | default text | default text | default text | default text |
+| C03 | `HomeService` `"vip"` key variant | VIP text | VIP text | VIP text | VIP text |
+| C04 | `AccountService` default via `@ProviderFactory` | garen / Lv.3 | garen / Lv.3 | garen / Lv.3 | garen / Lv.3 |
+| C05 | `AccountService` `"guest"` key variant | Guest | Guest | Guest | Guest |
+| C06 | `META-INF/services` provider (core-common) | PASS | PASS | PASS | PASS |
+| C07 | flavor provider matches the flavor (class + name) | free / `FreeChannelServiceImpl` | paid / `PaidChannelServiceImpl` | free / `FreeChannelServiceImpl` | paid / `PaidChannelServiceImpl` |
+| C08 | table shape: debug has the extra debug-only entry | 8 | 8 | 7 | 7 |
+| C09 | debug-only provider present only in debug builds | registered | registered | absent | absent |
+| C10 | dynamic-module provider is MISSING and `load()` returns null | PASS | PASS | PASS | PASS |
+| C11 | no `DEAD` provider | 0 | 0 | 0 | 0 |
+| C12 | multi-provider APIs (`loadAll` / `stream`) | 2 | 2 | 2 | 2 |
+
+"Camera module" drives the dynamic-install path; a sideloaded APK has no Play Store, so it must
+fail gracefully (logged, no crash). Screenshots from the verification run are written to
+`build/ui-test/` (gitignored).
+
 
 ## Integration in three steps
 
@@ -221,8 +265,10 @@ Key points:
   provided by the third-party jar / aar**. The framework only scans text files in source
   directories and **does not unzip or scan classes in dependency artifacts** (preserving the
   "no third-party jar scanning" constraint);
-- Scan path: `src/main/resources/META-INF/services/**`, and also any `META-INF/services/`
-  directory at any depth under `src/main/java` / `src/main/kotlin`; controlled by
+- Scan path: every static source directory of the **variant**
+  (`variant.sources.java` / `kotlin` / `resources`), i.e. `src/main`, the build-type overlay
+  (`src/debug`) and flavor overlays (`src/free`, `src/paid`). `META-INF/services/` is accepted
+  at any depth under those directories and under `src/main/resources`; controlled by
   `spi { scanMetaInfServices = true }` (enabled by default);
 - Standard SPI configuration has no `key` / `factory` concept, so entries map to
   `key = ""` (default variant) and no-arg construction; therefore **implementations must
@@ -235,7 +281,7 @@ Key points:
   same `(service, key="")` still fail the build.
 
 > That module must apply the `top.jayvin.android.spi` plugin, otherwise there is no
-> `xxScanProviders` task and the configuration is not scanned.
+> `{variant}ScanProviders` task and the configuration is not scanned.
 > `modules/core-common` is the minimal example that only has SPI configuration and no annotations.
 
 ## What happens after a dynamic module is installed
@@ -282,7 +328,7 @@ While a module is not installed, every `load()` retries and returns `null`.
 public final class ServiceConfiguration implements ProviderConfiguration {
     public ServiceConfiguration() { super(); }
 
-    public Class[] services() { return new Class[]{ AccountService.class, CameraService.class, HomeService.class }; }
+    public Class[] services() { return new Class[]{ AccountService.class, AccountService.class, CameraService.class, HomeService.class, HomeService.class }; }
     public String[] keys()    { return new String[]{ "", "guest", "", "", "vip" }; }
 
     public Class providerOf(Class service, String key) {
@@ -303,7 +349,9 @@ public final class ServiceConfiguration implements ProviderConfiguration {
 }
 ```
 
-`services()` contains interfaces only. Interfaces must live in base; otherwise a failed
+`services()` contains interfaces only, and it is **one-to-one with `keys()`**: a service
+registered under N keys appears N times, index-aligned with its keys (`ProviderRegistry` groups
+by service and reads keys by index). Interfaces must live in base; otherwise a failed
 resolution inside a method body breaks the whole table (the only hard constraint).
 
 ## Build-time validation
@@ -324,11 +372,14 @@ The scanner prefers a failed build over generating a wrong table:
 
 - **Interfaces must live in base**: if a class literal inside `services()` comes from a
   dynamic module, the whole table breaks.
-- **Scans `src/main/java` + `src/main/kotlin` + `src/main/resources` (SPI config)**:
-  flavor-only directories (`src/debug/`) and custom source sets are not covered;
+- **Scans every variant's declared sources**: `src/main` plus build-type and flavor overlays,
+  derived from `variant.sources`. Generated source directories are deliberately skipped;
   `META-INF/services` is only read from source directories, not from dependency artifacts.
-- **Aggregation is per buildType**: one table for `debug`/`release`, shared by flavors;
-  multi-flavor projects need per-variant alignment.
+- **Aggregation is per variant**: `freeDebug` and `paidDebug` get separate tables. A module
+  variant is aggregated when its build type matches the app variant and every flavor dimension
+  it declares matches the app variant's value; modules without flavors match every app flavor.
+  A dependency with a flavor dimension the app does not declare is never aggregated (AGP would
+  not variant-match it either).
 - **Nested classes / `typealias` are not supported as services**: the scanner resolves
   top-level types.
 - **Non-Play channels**: the framework does not depend on Play; the install channel and

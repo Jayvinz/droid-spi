@@ -12,6 +12,14 @@ android {
         minSdk = 24
     }
 
+    // Dynamic features depend on the base :app module, so they must declare the same flavor
+    // dimension; otherwise the base variant is ambiguous when the feature resolves :app.
+    flavorDimensions += "channel"
+    productFlavors {
+        create("free") { dimension = "channel" }
+        create("paid") { dimension = "channel" }
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
