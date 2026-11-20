@@ -34,14 +34,14 @@ dependencyResolutionManagement {
 plugins {
     // 每个声明 provider 的模块都要 apply 插件
     // 支持的模块类型：application、library、dynamic-feature
-    id("top.jayvin.droidspi") version "1.0.0-alpha01"
+    id("top.jayvin.droidspi") version "1.0.0-alpha02"
 }
 
 dependencies {
     // provider 模块只需要 annotation
-    implementation("top.jayvin.droidspi:annotation:1.0.0-alpha01")
+    implementation("top.jayvin.droidspi:annotation:1.0.0-alpha02")
     // application 模块，或其他需要用到 ServiceLoader 的地方
-    implementation("top.jayvin.droidspi:runtime:1.0.0-alpha01")
+    implementation("top.jayvin.droidspi:runtime:1.0.0-alpha02")
 }
 ```
 

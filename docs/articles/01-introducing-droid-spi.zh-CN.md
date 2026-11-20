@@ -108,12 +108,12 @@ flavor 的 provider 给到另一个 flavor，因此聚合是按**变体**进行�
 
 ```kotlin
 plugins {
-    id("top.jayvin.droidspi") version "1.0.0-alpha01"
+    id("top.jayvin.droidspi") version "1.0.0-alpha02"
 }
 
 dependencies {
-    implementation("top.jayvin.droidspi:annotation:1.0.0-alpha01")
-    implementation("top.jayvin.droidspi:runtime:1.0.0-alpha01")
+    implementation("top.jayvin.droidspi:annotation:1.0.0-alpha02")
+    implementation("top.jayvin.droidspi:runtime:1.0.0-alpha02")
 }
 ```
 

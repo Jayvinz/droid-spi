@@ -40,14 +40,14 @@ dependencyResolutionManagement {
 plugins {
     // apply this plugin to every module that declares providers
     // supported module types: application, library, dynamic-feature
-    id("top.jayvin.droidspi") version "1.0.0-alpha01"
+    id("top.jayvin.droidspi") version "1.0.0-alpha02"
 }
 
 dependencies {
     // provider modules only need annotation.
-    implementation("top.jayvin.droidspi:annotation:1.0.0-alpha01")
+    implementation("top.jayvin.droidspi:annotation:1.0.0-alpha02")
     // application module, or anywhere else that uses ServiceLoader
-    implementation("top.jayvin.droidspi:runtime:1.0.0-alpha01")
+    implementation("top.jayvin.droidspi:runtime:1.0.0-alpha02")
 }
 ```
 
