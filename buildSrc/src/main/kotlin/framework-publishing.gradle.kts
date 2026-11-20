@@ -75,7 +75,12 @@ signing {
     // plugin publication gets signing tasks from the plugin-publish plugin).
     isRequired = !signingKey.isNullOrBlank()
     if (!signingKey.isNullOrBlank()) {
-        useInMemoryPgpKeys(signingKey, providers.environmentVariable("SIGNING_PASSWORD").orNull)
+        // Gradle registers no signatory when the password is null; an unencrypted key therefore
+        // needs an empty string, not null.
+        useInMemoryPgpKeys(
+            signingKey,
+            providers.environmentVariable("SIGNING_PASSWORD").orNull ?: "",
+        )
     }
 }
 if (!signingKey.isNullOrBlank()) {
