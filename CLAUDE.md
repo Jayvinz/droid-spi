@@ -271,25 +271,31 @@ These are correctness red lines, not style preferences:
 
 ## AGP compatibility
 
-One plugin artifact serves **AGP 8.7–8.13 and 9.0–9.5**. `plugin/build.gradle.kts` compiles
-against the lowest supported AGP (8.7.3) and only uses APIs that keep the same descriptors in
-AGP 9: `AndroidComponentsExtension`, `Variant`/`Component` (sources, runtimeConfiguration,
-artifacts), `ScopedArtifacts`/`ScopedArtifact`, `ApplicationExtension.dynamicFeatures`.
+One plugin artifact serves **AGP 8.0–8.13 and 9.0–9.5**. `plugin/build.gradle.kts` compiles
+against AGP 8.7.3 and only uses APIs that keep the same descriptors across 8.x and 9.x:
+`AndroidComponentsExtension`, `Variant`/`Component` (sources, runtimeConfiguration, artifacts),
+`ScopedArtifacts`/`ScopedArtifact`, `ApplicationExtension.dynamicFeatures`.
 
 - `ScopedArtifact` changed its generic base from `Single<RegularFile>` to `Single<Directory>` in
   AGP 9. The plugin must not name that type parameter; `toAppend(ScopedArtifact.CLASSES)` stays
   source- and binary-compatible, and AGP 9 routes appended CLASSES through `userAddedClasses`
   into the final APK/AAB.
-- AGP/Gradle pairings: AGP 8.7 → Gradle 8.9, AGP 8.13 → Gradle 8.13, AGP 9.0 → Gradle 9.1,
-  AGP 9.5 → Gradle 9.6. AGP 9 uses built-in Kotlin, so consumers must not apply the Kotlin
-  Android plugin.
+- AGP 8.0–8.3 (and 7.4) expose only `SourceDirectories.Flat.all`; `static` arrived in 8.4.
+  `staticSourceDirs` catches `NoSuchMethodError` and falls back to `all`, so on those versions
+  generated source directories can enter the scan.
+- `runtime` sets `aarMetadata.minCompileSdk = 24`. Without it the AAR metadata defaults to the
+  module's compileSdk (35), and `checkDebugAarMetadata` rejects AGP 8.0–8.3 consumers, whose
+  maximum recommended compileSdk is 33.
+- AGP/Gradle pairings: AGP 8.0–8.6 → Gradle 8.0–8.7 (whatever the AGP release requires),
+  AGP 8.7 → Gradle 8.9, AGP 8.13 → Gradle 8.13, AGP 9.0 → Gradle 9.1, AGP 9.5 → Gradle 9.6.
+  AGP 9 uses built-in Kotlin, so consumers must not apply the Kotlin Android plugin.
 - `runtime` publishes Kotlin 2.0 metadata (`languageVersion`/`apiVersion` 2.0 plus
   `-Xmetadata-version=2.0.0`) and declares `kotlin-stdlib:2.0.21`, so AGP 8 projects still on
   Kotlin 2.0/2.1 can compile against it. Declaring stdlib explicitly also prevents AGP from
   publishing its bundled 2.4.x stdlib dependency.
-- `compat/agp8/` is a standalone fixture (AGP 8.7.3, Gradle 8.9, Kotlin 2.0.21) that consumes
-  `local-repo`. Run it after publishing the framework to keep the 8.x line covered; see
-  `compat/agp8/README.md`.
+- `compat/agp8/` (AGP 8.7.3, Gradle 8.9) and `compat/agp80/` (AGP 8.0.2, Gradle 8.2) are
+  standalone fixtures that consume `local-repo`; both use Kotlin 2.0.21. Run them after
+  publishing the framework to keep the 8.x lines covered; see their `README.md` files.
 - **AGP 7.x is deliberately unsupported** (decided 2026-11-20 after a feasibility study):
   - 7.0–7.3 have no `ScopedArtifacts`/`ScopedArtifact` (and `Sources` only appears in 7.2), so
     the manifest aggregation and CLASSES append cannot run there at all.

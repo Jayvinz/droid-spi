@@ -13,6 +13,12 @@ android {
     defaultConfig {
         minSdk = 24
         consumerProguardFiles("consumer-rules.pro")
+        // AAR metadata defaults `minCompileSdk` to this module's compileSdk (35), which would
+        // force every consumer onto compileSdk 35. The runtime only touches android.util.Log,
+        // so allow older compileSdk values used by the AGP 8.0-8.3 lines.
+        aarMetadata {
+            minCompileSdk = 24
+        }
     }
 
     compileOptions {

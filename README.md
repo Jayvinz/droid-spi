@@ -22,8 +22,8 @@ that live in on-demand dynamic feature modules.
 
 | Component | Supported |
 |---|---|
-| AGP | **8.7 – 8.13 and 9.0 – 9.5** (AGP 7.x is not supported) |
-| Gradle | 8.9 with AGP 8.7, 8.13 with AGP 8.13, 9.1 with AGP 9.0, 9.6+ with AGP 9.5 |
+| AGP | **8.0 – 8.13 and 9.0 – 9.5** (AGP 7.x is not supported) |
+| Gradle | the version AGP requires: 8.0+ for AGP 8.0–8.6, 8.9 for AGP 8.7, 8.13 for AGP 8.13, 9.1 for AGP 9.0, 9.6+ for AGP 9.5 |
 | JDK | 17 |
 | Kotlin | 2.0+ for projects that use `runtime` |
 | Android | `minSdk 24` |
@@ -135,4 +135,4 @@ key stays unique — duplicates fail the build.
 
 - Service interfaces must live in base / resident modules, not in dynamic features.
 - No nested classes or `typealias` as service interfaces.
-- Requires JDK 17, AGP 8.7–8.13 or 9.x, `minSdk 24`. AGP 7.x is not supported.
+- Requires JDK 17, AGP 8.0–8.13 or 9.x, `minSdk 24`. AGP 7.x is not supported.
