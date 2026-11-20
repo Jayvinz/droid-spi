@@ -25,8 +25,12 @@ that live in on-demand dynamic feature modules.
 | AGP | **8.0 – 8.13 and 9.0 – 9.5** (AGP 7.x is not supported) |
 | Gradle | the version AGP requires: 8.0+ for AGP 8.0–8.6, 8.9 for AGP 8.7, 8.13 for AGP 8.13, 9.1 for AGP 9.0, 9.6+ for AGP 9.5 |
 | JDK | 17 |
-| Kotlin | 2.0+ for projects that use `runtime` |
+| Kotlin | 1.8+ for projects that use `runtime` |
 | Android | `minSdk 24` |
+
+`runtime` publishes Kotlin 2.0 metadata, which Kotlin 1.8 through 2.x compilers can read (the
+metadata compatibility rule accepts the next major release at `x.0.0`). The SPI Gradle plugin
+itself does not require KGP, and Java-only consumers are unaffected.
 
 On AGP 9 Kotlin is built into AGP: do not apply `org.jetbrains.kotlin.android`, or the build
 fails. Configure the JVM target through `kotlin { compilerOptions { jvmTarget } }`.

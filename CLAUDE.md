@@ -292,9 +292,17 @@ against AGP 8.7.3 and only uses APIs that keep the same descriptors across 8.x a
   AGP 8.7 → Gradle 8.9, AGP 8.13 → Gradle 8.13, AGP 9.0 → Gradle 9.1, AGP 9.5 → Gradle 9.6.
   AGP 9 uses built-in Kotlin, so consumers must not apply the Kotlin Android plugin.
 - `runtime` publishes Kotlin 2.0 metadata (`languageVersion`/`apiVersion` 2.0 plus
-  `-Xmetadata-version=2.0.0`) and declares `kotlin-stdlib:2.0.21`, so AGP 8 projects still on
-  Kotlin 2.0/2.1 can compile against it. Declaring stdlib explicitly also prevents AGP from
+  `-Xmetadata-version=2.0.0`) and declares `kotlin-stdlib:2.0.21`. Kotlin's metadata rule accepts
+  the next major release at `x.0.0`, and Kotlin 1.8.20/1.9.x can read 2.0.0 metadata (verified,
+  including the inline body), so every supported consumer (Kotlin 1.8+) can compile against it.
+  Kotlin 2.4 no longer supports a language/API level below 2.0, so those stay at 2.0 and only
+  the metadata version is lowered. Declaring stdlib explicitly also prevents AGP from
   publishing its bundled 2.4.x stdlib dependency.
+- `plugin` also emits 2.0 metadata (`-Xmetadata-version=2.0.0`, `languageVersion`/`apiVersion`
+  2.0): consumers' Kotlin DSL compiles build scripts with the Kotlin embedded in the Gradle
+  distribution (1.8 on Gradle 8.0-8.3, 1.9 on 8.4-8.10), which cannot read the plugin's
+  default 2.4 metadata. Without the override, `spi { ... }` in a Kotlin DSL script fails with
+  "incompatible metadata" on those Gradle versions.
 - `compat/agp8/` (AGP 8.7.3, Gradle 8.9) and `compat/agp80/` (AGP 8.0.2, Gradle 8.2) are
   standalone fixtures that consume `local-repo`; both use Kotlin 2.0.21 and share their demo
   providers from `compat/shared/demo`. Run them after publishing the framework to keep the 8.x
