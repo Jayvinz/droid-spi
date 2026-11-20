@@ -602,7 +602,9 @@ but its table stores `Class` literals and initializes once (`mHasInit`); once an
 ### 8.1 Full regression matrix (run after major plugin changes)
 
 Any change to scanning, aggregation, artifact wiring, or caching must re-run this matrix. Every
-step below was executed for the artifact-based transport rewrite (Gradle 8.9 / AGP 8.7.3).
+step below was executed for the artifact-based transport rewrite (Gradle 8.9 / AGP 8.7.3) and
+re-run after the AGP 9 migration (Gradle 9.6 / AGP 9.5.1). The 8.x line stays covered by the
+standalone fixtures in `compat/agp8/` (8.7.3) and `compat/agp80/` (8.0.2).
 
 1. **Framework publish + JVM tests**
    ```bash

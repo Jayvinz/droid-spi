@@ -19,6 +19,9 @@ java {
 
 dependencies {
     implementation("org.ow2.asm:asm:9.7")
+    // Compatibility baseline: compile against the lowest supported AGP so one artifact serves
+    // AGP 8.7-8.13 and 9.x. Do not raise this to use newer AGP APIs; use only members whose
+    // descriptors are identical in 8.7.3 and 9.5.1 (see the AGP compatibility notes in CLAUDE.md).
     compileOnly("com.android.tools.build:gradle:8.7.3")
     testImplementation("junit:junit:4.13.2")
 }
