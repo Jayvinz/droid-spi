@@ -13,6 +13,19 @@ provider，运行时**零反射**查找——包括位于按需下载的 dynamic
 
 ## 集成
 
+### 支持版本
+
+| 组件 | 支持范围 |
+|---|---|
+| AGP | **8.7 – 8.13 与 9.0 – 9.5**（不支持 AGP 7.x） |
+| Gradle | AGP 8.7 配 8.9，AGP 8.13 配 8.13，AGP 9.0 配 9.1，AGP 9.5 配 9.6+ |
+| JDK | 17 |
+| Kotlin | 使用 `runtime` 的项目需要 Kotlin 2.0+ |
+| Android | `minSdk 24` |
+
+AGP 9 已内置 Kotlin：不要再应用 `org.jetbrains.kotlin.android`，否则构建会直接失败。JVM target
+通过 `kotlin { compilerOptions { jvmTarget } }` 配置。
+
 插件来自 **Gradle Plugin Portal**，库来自 **Maven Central**，不需要额外配置仓库或 token。
 
 ```kotlin
@@ -114,5 +127,4 @@ Kotlin 也支持 `ServiceLoader.load<HomeService>()`。`providers()` / `stream()
 
 - service 接口必须位于 base / 常驻模块，不能放在 dynamic feature 中。
 - service 接口不支持嵌套类和 `typealias`。
-- 需要 JDK 17、AGP 8.7–8.13 或 9.x、`minSdk 24`。AGP 9 下不要再应用 Kotlin Android 插件：
-  Kotlin 已内置于 AGP。
+- 需要 JDK 17、AGP 8.7–8.13 或 9.x、`minSdk 24`。不支持 AGP 7.x。

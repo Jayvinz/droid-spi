@@ -290,5 +290,16 @@ artifacts), `ScopedArtifacts`/`ScopedArtifact`, `ApplicationExtension.dynamicFea
 - `compat/agp8/` is a standalone fixture (AGP 8.7.3, Gradle 8.9, Kotlin 2.0.21) that consumes
   `local-repo`. Run it after publishing the framework to keep the 8.x line covered; see
   `compat/agp8/README.md`.
+- **AGP 7.x is deliberately unsupported** (decided 2026-11-20 after a feasibility study):
+  - 7.0–7.3 have no `ScopedArtifacts`/`ScopedArtifact` (and `Sources` only appears in 7.2), so
+    the manifest aggregation and CLASSES append cannot run there at all.
+  - 7.4 is the only 7.x release with the artifact API, but `SourceDirectories.Flat` has no
+    `static` (only `all`, which would pull generated sources into the scan), and AGP 7.4.2
+    requires Gradle 7.5, whose embedded Kotlin 1.6 cannot read the Kotlin 2.x metadata of the
+    plugin and its stdlib: Kotlin DSL script compilation fails with
+    `InvalidProtocolBufferException` before the plugin even applies.
+  - Supporting it would need a second plugin variant compiled against AGP 7.4 / Gradle 7.5
+    with an old Kotlin metadata level, dual publication (Gradle plugin variants) and a second
+    test fixture — too much for an EOL line. Revisit only if a concrete consumer needs 7.4.
 - There is no toolchain resolver plugin; the daemon JVM pin is the JDK 17 source for
   `jvmToolchain(17)`.
