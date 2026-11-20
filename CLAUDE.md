@@ -106,9 +106,11 @@ Production publishing is **CI-only**; the build itself has no production reposit
 `./gradlew publish` writes unsigned artifacts to `local-repo/` and nothing else.
 
 Required repository secrets: `SONATYPE_USERNAME`, `SONATYPE_PASSWORD` (a Central Portal user
-token), `SIGNING_KEY` (ASCII-armored private key), `SIGNING_PASSWORD`,
-`GRADLE_PUBLISH_KEY`, `GRADLE_PUBLISH_SECRET`. The `framework-publishing` convention plugin
-enables signing only when `SIGNING_KEY` is present and disables signing tasks otherwise.
+token), `SIGNING_KEY` (ASCII-armored private key), `GRADLE_PUBLISH_KEY`,
+`GRADLE_PUBLISH_SECRET`. `SIGNING_PASSWORD` is optional and only needed for an encrypted key;
+the workflow and the build both treat an absent password as an unencrypted key. The
+`framework-publishing` convention plugin enables signing only when `SIGNING_KEY` is present and
+disables signing tasks otherwise.
 
 To cut a release: bump `spiVersion` in `gradle.properties`, commit, create and push the tag
 (`git tag v1.0.0-alpha01 && git push origin v1.0.0-alpha01`).

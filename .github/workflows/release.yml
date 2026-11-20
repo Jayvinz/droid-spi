@@ -107,11 +107,16 @@ jobs:
           echo "::error::Maven Central deployment did not finish in time"
           exit 1
 
+      - name: Stage the release assets
+        run: |
+          mkdir -p build/release-assets
+          cp runtime/build/outputs/aar/*.aar "build/release-assets/runtime-${GITHUB_REF_NAME#v}.aar"
+
       - name: Attach artifacts to the release
         uses: softprops/action-gh-release@v2
         with:
           files: |
             annotation/build/libs/*.jar
             plugin/build/libs/*.jar
-            runtime/build/outputs/aar/*.aar
+            build/release-assets/*.aar
           fail_on_unmatched_files: false
