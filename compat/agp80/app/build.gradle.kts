@@ -6,7 +6,7 @@ plugins {
     id("top.jayvin.droidspi")
 }
 
-val spiVersion = providers.gradleProperty("spiVersion").getOrElse("1.0.0-alpha01")
+val spiVersion = providers.gradleProperty("spiVersion").get()
 
 android {
     namespace = "compat.agp80"
@@ -19,6 +19,9 @@ android {
         versionCode = 1
         versionName = "1.0"
     }
+
+    // Shared with the other compat fixtures; keeps the demo providers in one place.
+    sourceSets["main"].java.srcDir("../../shared/demo")
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17

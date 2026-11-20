@@ -1,4 +1,4 @@
-import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import org.jetbrains.kotlin.gradle.dsl.KotlinVersion
 
 plugins {
     id("com.android.library")
@@ -38,15 +38,13 @@ android {
     }
 }
 
-// AGP 9 compiles Kotlin itself (built-in Kotlin); the Kotlin Android plugin is unnecessary.
+// Consumers on the AGP 8.x lines often still use Kotlin 2.0/2.1, which cannot read 2.4
+// metadata. The runtime API surface is plain Kotlin, so emit 2.0 metadata and restrict the
+// API/language level to 2.0 to keep the published AAR consumable.
 kotlin {
     compilerOptions {
-        jvmTarget.set(JvmTarget.JVM_17)
-        // Consumers on the AGP 8.x lines often still use Kotlin 2.0/2.1, which cannot read
-        // 2.4 metadata. The runtime API surface is plain Kotlin, so emit 2.0 metadata and
-        // restrict the API/language level to 2.0 to keep the published AAR consumable.
-        languageVersion.set(org.jetbrains.kotlin.gradle.dsl.KotlinVersion.KOTLIN_2_0)
-        apiVersion.set(org.jetbrains.kotlin.gradle.dsl.KotlinVersion.KOTLIN_2_0)
+        languageVersion.set(KotlinVersion.KOTLIN_2_0)
+        apiVersion.set(KotlinVersion.KOTLIN_2_0)
         freeCompilerArgs.add("-Xmetadata-version=2.0.0")
     }
 }

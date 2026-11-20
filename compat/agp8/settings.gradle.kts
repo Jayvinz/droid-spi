@@ -1,8 +1,8 @@
-// Compatibility fixture: consumes the framework plugin from local-repo with AGP 8.7.3 and
-// Kotlin 2.0.21 on Gradle 8.9. The main build exercises AGP 9; this fixture keeps the 8.x line
-// covered. Publish the framework modules to local-repo before running it (see README.md).
+// Compatibility fixture: consumes the framework plugin from local-repo with AGP 8.7.3,
+// Kotlin 2.0.21 and Gradle 8.9. The main build exercises AGP 9; this fixture keeps the 8.x
+// line covered. Publish the framework modules to local-repo first (see README.md).
 pluginManagement {
-    val spiVersion = providers.gradleProperty("spiVersion").getOrElse("1.0.0-alpha01")
+    val spiVersion = providers.gradleProperty("spiVersion").get()
     plugins {
         id("top.jayvin.droidspi") version spiVersion
     }

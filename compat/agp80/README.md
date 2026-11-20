@@ -5,8 +5,9 @@ the **AGP 8.0–8.3** window specifically: those releases have no `SourceDirecto
 so the plugin falls back to `all` when wiring scanned sources. It builds with **AGP 8.0.2,
 Gradle 8.2 and Kotlin 2.0.21** and consumes the framework from `local-repo`.
 
-Both a Java provider and a Kotlin provider are declared, and the check below confirms the
-generated configuration class reaches the APK.
+Both a Java provider and a Kotlin provider are declared (shared with the other fixtures in
+`compat/shared/demo`), and the check below confirms the generated configuration class reaches
+the APK.
 
 ## Run
 

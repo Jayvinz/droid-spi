@@ -264,8 +264,10 @@ These are correctness red lines, not style preferences:
 - Environment: JDK 17, Gradle 9.6, AGP 9.5.1, Kotlin JVM 2.4.21 (Gradle plugin module only),
   compileSdk 35; `local.properties` contains the local SDK path.
 - Android modules no longer apply `org.jetbrains.kotlin.android`: AGP 9 has built-in Kotlin and
-  **fails the build** if that plugin is present. JVM target is set through
-  `kotlin { compilerOptions { jvmTarget } }`, not `kotlinOptions`.
+  **fails the build** if that plugin is present. Built-in Kotlin derives `jvmTarget` from
+  `compileOptions` (class file major version 61), so modules only configure `compileOptions`;
+  use `kotlin { compilerOptions { ... } }` only for extra compiler settings such as runtime's
+  Kotlin 2.0 metadata.
 - Gradle daemon JVM is pinned by `gradle/gradle-daemon-jvm.properties` (`toolchainVersion=17`);
   change it with `./gradlew updateDaemonJvm --jvm-version=<version>`, do not edit that file by hand.
 
@@ -294,8 +296,9 @@ against AGP 8.7.3 and only uses APIs that keep the same descriptors across 8.x a
   Kotlin 2.0/2.1 can compile against it. Declaring stdlib explicitly also prevents AGP from
   publishing its bundled 2.4.x stdlib dependency.
 - `compat/agp8/` (AGP 8.7.3, Gradle 8.9) and `compat/agp80/` (AGP 8.0.2, Gradle 8.2) are
-  standalone fixtures that consume `local-repo`; both use Kotlin 2.0.21. Run them after
-  publishing the framework to keep the 8.x lines covered; see their `README.md` files.
+  standalone fixtures that consume `local-repo`; both use Kotlin 2.0.21 and share their demo
+  providers from `compat/shared/demo`. Run them after publishing the framework to keep the 8.x
+  lines covered; see their `README.md` files.
 - **AGP 7.x is deliberately unsupported** (decided 2026-11-20 after a feasibility study):
   - 7.0–7.3 have no `ScopedArtifacts`/`ScopedArtifact` (and `Sources` only appears in 7.2), so
     the manifest aggregation and CLASSES append cannot run there at all.

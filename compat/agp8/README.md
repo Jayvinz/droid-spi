@@ -5,9 +5,10 @@ Gradle 8.9 and Kotlin 2.0.21**, consuming the framework from `local-repo`. It pr
 plugin artifact still serves the 8.x line and that the published `runtime` AAR remains
 consumable by projects that have not moved to Kotlin 2.4.
 
-Both a Java provider and a Kotlin provider are declared, so the scan task exercises
-`variant.sources.java`, `variant.sources.kotlin` and the generated configuration class, which
-the check below looks for inside the APK.
+Both a Java provider and a Kotlin provider are declared (shared with the other fixtures in
+`compat/shared/demo`), so the scan task exercises `variant.sources.java`,
+`variant.sources.kotlin` and the generated configuration class, which the check below looks for
+inside the APK.
 
 ## Run
 
