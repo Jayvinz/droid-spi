@@ -33,7 +33,7 @@ Published coordinates (the brand is `Droid-spi`; the Java package is deliberatel
 from it and stays `top.jayvin.android.spi`):
 
 - Gradle plugin id: `top.jayvin.droidspi`
-- Maven group: `io.github.jayvinz`; artifacts `droidspi-annotation`, `droidspi-runtime`, `droidspi-plugin`
+- Maven group: `top.jayvin.droidspi`; artifacts `annotation`, `runtime`, `plugin`
 - Generated configuration class: `top.jayvin.android.spi.generated.ServiceConfiguration`
 
 ## Common commands

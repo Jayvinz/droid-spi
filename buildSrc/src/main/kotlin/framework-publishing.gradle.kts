@@ -17,7 +17,7 @@ plugins {
 // Everything below is project-local (module-relative path, Gradle property), so it stays
 // compatible with isolated projects; no project reads another project's model.
 
-group = "io.github.jayvinz"
+group = "top.jayvin.droidspi"
 version = providers.gradleProperty("spiVersion").get()
 
 // Javadoc defaults to the platform encoding; the sources contain non-ASCII characters and CI

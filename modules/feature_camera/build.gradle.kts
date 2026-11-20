@@ -36,5 +36,5 @@ dependencies {
     implementation(project(":app"))
     implementation(project(":modules:core-api"))
     implementation(project(":modules:core-common"))
-    implementation("io.github.jayvinz:droidspi-annotation:$spiVersion")
+    implementation("top.jayvin.droidspi:annotation:$spiVersion")
 }

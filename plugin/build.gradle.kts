@@ -41,11 +41,3 @@ gradlePlugin {
 tasks.matching { it.name == "publishPlugins" }.configureEach {
     onlyIf { System.getenv("CI") == "true" }
 }
-
-publishing {
-    publications.withType<MavenPublication>().configureEach {
-        // The marker publication must keep the plugin-id coordinates; only the implementation jar
-        // gets the branded artifactId.
-        if (name == "pluginMaven") artifactId = "droidspi-plugin"
-    }
-}

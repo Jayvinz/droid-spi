@@ -45,9 +45,9 @@ plugins {
 
 dependencies {
     // provider modules only need annotation.
-    implementation("io.github.jayvinz:droidspi-annotation:1.0.0-alpha01")
+    implementation("top.jayvin.droidspi:annotation:1.0.0-alpha01")
     // application module, or anywhere else that uses ServiceLoader
-    implementation("io.github.jayvinz:droidspi-runtime:1.0.0-alpha01")
+    implementation("top.jayvin.droidspi:runtime:1.0.0-alpha01")
 }
 ```
 

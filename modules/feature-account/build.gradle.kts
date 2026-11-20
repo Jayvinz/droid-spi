@@ -26,5 +26,5 @@ android {
 
 dependencies {
     implementation(project(":modules:core-api"))
-    implementation("io.github.jayvinz:droidspi-annotation:$spiVersion")
+    implementation("top.jayvin.droidspi:annotation:$spiVersion")
 }

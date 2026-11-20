@@ -39,9 +39,9 @@ plugins {
 
 dependencies {
     // provider 模块只需要 annotation
-    implementation("io.github.jayvinz:droidspi-annotation:1.0.0-alpha01")
+    implementation("top.jayvin.droidspi:annotation:1.0.0-alpha01")
     // application 模块，或其他需要用到 ServiceLoader 的地方
-    implementation("io.github.jayvinz:droidspi-runtime:1.0.0-alpha01")
+    implementation("top.jayvin.droidspi:runtime:1.0.0-alpha01")
 }
 ```
 

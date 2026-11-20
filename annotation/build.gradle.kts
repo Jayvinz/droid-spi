@@ -17,7 +17,6 @@ java {
 publishing {
     publications {
         create<MavenPublication>("maven") {
-            artifactId = "droidspi-annotation"
             from(components["java"])
         }
     }
