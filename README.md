@@ -122,4 +122,5 @@ key stays unique — duplicates fail the build.
 
 - Service interfaces must live in base / resident modules, not in dynamic features.
 - No nested classes or `typealias` as service interfaces.
-- Requires JDK 17, AGP 8.x, `minSdk 24`.
+- Requires JDK 17, AGP 8.7–8.13 or 9.x, `minSdk 24`. On AGP 9 do not apply the Kotlin Android
+  plugin: Kotlin support is built in.

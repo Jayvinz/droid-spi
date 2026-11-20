@@ -261,7 +261,34 @@ These are correctness red lines, not style preferences:
   If the class is missing, it only logs and degrades to an empty configuration.
 - R8: base reports missing classes for uninstalled modules; add `-dontwarn` per module
   (see `app/proguard-rules.pro`).
-- Environment: JDK 17, Gradle 8.9, AGP 8.7.3, Kotlin 2.0.21, compileSdk 35;
-  `local.properties` contains the local SDK path.
+- Environment: JDK 17, Gradle 9.6, AGP 9.5.1, Kotlin JVM 2.4.21 (Gradle plugin module only),
+  compileSdk 35; `local.properties` contains the local SDK path.
+- Android modules no longer apply `org.jetbrains.kotlin.android`: AGP 9 has built-in Kotlin and
+  **fails the build** if that plugin is present. JVM target is set through
+  `kotlin { compilerOptions { jvmTarget } }`, not `kotlinOptions`.
 - Gradle daemon JVM is pinned by `gradle/gradle-daemon-jvm.properties` (`toolchainVersion=17`);
   change it with `./gradlew updateDaemonJvm --jvm-version=<version>`, do not edit that file by hand.
+
+## AGP compatibility
+
+One plugin artifact serves **AGP 8.7–8.13 and 9.0–9.5**. `plugin/build.gradle.kts` compiles
+against the lowest supported AGP (8.7.3) and only uses APIs that keep the same descriptors in
+AGP 9: `AndroidComponentsExtension`, `Variant`/`Component` (sources, runtimeConfiguration,
+artifacts), `ScopedArtifacts`/`ScopedArtifact`, `ApplicationExtension.dynamicFeatures`.
+
+- `ScopedArtifact` changed its generic base from `Single<RegularFile>` to `Single<Directory>` in
+  AGP 9. The plugin must not name that type parameter; `toAppend(ScopedArtifact.CLASSES)` stays
+  source- and binary-compatible, and AGP 9 routes appended CLASSES through `userAddedClasses`
+  into the final APK/AAB.
+- AGP/Gradle pairings: AGP 8.7 → Gradle 8.9, AGP 8.13 → Gradle 8.13, AGP 9.0 → Gradle 9.1,
+  AGP 9.5 → Gradle 9.6. AGP 9 uses built-in Kotlin, so consumers must not apply the Kotlin
+  Android plugin.
+- `runtime` publishes Kotlin 2.0 metadata (`languageVersion`/`apiVersion` 2.0 plus
+  `-Xmetadata-version=2.0.0`) and declares `kotlin-stdlib:2.0.21`, so AGP 8 projects still on
+  Kotlin 2.0/2.1 can compile against it. Declaring stdlib explicitly also prevents AGP from
+  publishing its bundled 2.4.x stdlib dependency.
+- `compat/agp8/` is a standalone fixture (AGP 8.7.3, Gradle 8.9, Kotlin 2.0.21) that consumes
+  `local-repo`. Run it after publishing the framework to keep the 8.x line covered; see
+  `compat/agp8/README.md`.
+- There is no toolchain resolver plugin; the daemon JVM pin is the JDK 17 source for
+  `jvmToolchain(17)`.

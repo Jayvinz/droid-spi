@@ -537,7 +537,8 @@ WMRouter 的 `ServiceLoader.put()` 是 public static，可以手工接入动态�
 ### 8.1 完整回归矩阵（插件大改动后必须跑一遍）
 
 扫描、聚合、artifact 接线或缓存机制有任何改动，都必须重跑本矩阵。以下步骤在 artifact 传递方案
-重写后全部执行过（Gradle 8.9 / AGP 8.7.3）。
+重写后全部执行过（Gradle 8.9 / AGP 8.7.3），并在 AGP 9 迁移后重跑（Gradle 9.6 / AGP 9.5.1）。
+8.x 线由 `compat/agp8/` 下的独立夹具持续覆盖。
 
 1. **框架发布 + JVM 单测**
    ```bash

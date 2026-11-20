@@ -114,4 +114,5 @@ Kotlin 也支持 `ServiceLoader.load<HomeService>()`。`providers()` / `stream()
 
 - service 接口必须位于 base / 常驻模块，不能放在 dynamic feature 中。
 - service 接口不支持嵌套类和 `typealias`。
-- 需要 JDK 17、AGP 8.x、`minSdk 24`。
+- 需要 JDK 17、AGP 8.7–8.13 或 9.x、`minSdk 24`。AGP 9 下不要再应用 Kotlin Android 插件：
+  Kotlin 已内置于 AGP。

@@ -112,7 +112,6 @@ class SpiPlugin : Plugin<Project> {
         ) { config ->
             config.isCanBeResolved = true
             config.isCanBeConsumed = false
-            config.isVisible = false
             config.description = "SPI provider manifests of $variantName dynamic features"
             copyAttributes(variant.runtimeConfiguration.attributes, config.attributes)
         }
@@ -160,7 +159,7 @@ class SpiPlugin : Plugin<Project> {
         from.keySet().forEach { key ->
             @Suppress("UNCHECKED_CAST")
             val attribute = key as Attribute<Any>
-            to.attribute(attribute, from.getAttribute(attribute))
+            from.getAttribute(attribute)?.let { value -> to.attribute(attribute, value) }
         }
     }
 
