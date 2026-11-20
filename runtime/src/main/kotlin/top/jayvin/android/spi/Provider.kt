@@ -25,7 +25,11 @@ interface Provider<S : Any> {
     fun type(): Class<out S>
 
     /**
-     * Returns a new provider instance, triggering the provider's `<clinit>`.
+     * Returns a provider instance, triggering the provider's `<clinit>`.
+     *
+     * Instances are not cached: without `@ProviderFactory` each call constructs a new object,
+     * and a factory is invoked on every call — it may return a shared object the provider class
+     * owns.
      *
      * @return a provider instance, or null when the provider is no longer available (for
      *   example, its dynamic module was uninstalled)

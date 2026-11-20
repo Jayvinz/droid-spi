@@ -66,6 +66,7 @@ class HomeServiceImpl : HomeService {
 @ServiceProvider(service = HomeService::class, key = "vip")
 class VipHomeServiceImpl : HomeService {
     companion object {
+        // 这里既可以 new，也可以直接提供类已经持有的实例（见下文“构造方式与 @ProviderFactory”）。
         @ProviderFactory @JvmStatic
         fun create(): VipHomeServiceImpl = VipHomeServiceImpl()
     }
@@ -74,6 +75,46 @@ class VipHomeServiceImpl : HomeService {
 
 纯 Java 工程：`@ServiceProvider(service = HomeService.class)`。已经提供 JDK SPI 配置文件的
 第三方库，把 `META-INF/services/<接口 FQN>` 放进模块的 source resources 即可接入。
+
+### 构造方式与 `@ProviderFactory`
+
+生成表默认用 `new Impl()` 实例化 provider。把 `@ProviderFactory` 标在一个**静态无参**方法上，
+构造就交给 provider 类自己完成——当构造函数是 private 或需要参数时也必须这样做。生成的字节码
+用 `INVOKESTATIC` 调用该工厂（依然零反射），方法可以返回**类自己已经持有的实例**：单例、DI
+容器里的对象或预先构造好的对象。框架不缓存实例——每次 `load()` / `Provider.get()` 都会调用
+工厂——因此希望共享同一个对象时，在工厂里返回缓存字段。
+
+```kotlin
+@ServiceProvider(service = HomeService::class, key = "vip")
+class VipHomeServiceImpl private constructor() : HomeService {
+    override fun title() = "VIP"
+
+    companion object {
+        // 只创建一次，交给所有调用方；框架自身不做实例缓存。
+        private val shared = VipHomeServiceImpl()
+
+        // Kotlin 必须写成 companion object 里的 @JvmStatic；每个类最多一个工厂。
+        @ProviderFactory @JvmStatic
+        fun create(): VipHomeServiceImpl = shared
+    }
+}
+```
+
+```java
+@ServiceProvider(service = HomeService.class, key = "vip")
+public class VipHomeServiceImpl implements HomeService {
+    private static final VipHomeServiceImpl INSTANCE = new VipHomeServiceImpl();
+
+    @ProviderFactory
+    public static VipHomeServiceImpl create() { return INSTANCE; }
+}
+```
+
+工厂必须是 `static`、无参，并返回 provider 类自身（不是接口）——生成器发出
+`INVOKESTATIC Impl.create()LImpl;`。构建期会校验静态形式与“每个类最多一个工厂”；无参与返回类型
+两条不在构建期校验，违反时首次加载抛 `NoSuchMethodError`。`stateOf()` / `loadClass()` 仍然只用
+provider 类字面量，所以可用性与 dynamic feature 行为不变。工厂抛出异常时，该次 `load()` 返回
+`null`，下次调用会重试。
 
 ## 使用
 
@@ -89,6 +130,10 @@ val st   = ServiceLoader.stateOf(HomeService::class.java)      // READY / MISSIN
 
 Kotlin 也支持 `ServiceLoader.load<HomeService>()`。`providers()` / `stream()` 枚举全部条目；
 `loadClass()` 只取 class，不触发初始化。
+
+**框架不缓存实例**：每次 `load()` / `Provider.get()` 都会重新构造 provider（或调用它的
+`@ProviderFactory`），只有配置表会被加载一次并常驻。需要全局唯一实例的 provider，应让工厂返回
+同一个对象（见上文“构造方式与 `@ProviderFactory`”）；`loadClass()` 和 `stateOf()` 不会实例化。
 
 ### Dynamic feature
 

@@ -9,6 +9,11 @@ import java.lang.annotation.Target;
  * Marks a <b>static, no-argument method</b> as the construction entry point for a provider,
  * bypassing the "implementation must have a no-arg constructor" restriction.
  *
+ * <p>The factory may return an existing instance the class owns (a singleton, a DI-provided
+ * object, a pre-built object) instead of constructing a new one. It is invoked on every
+ * instantiation and the framework does not cache the result, so return a cached object when the
+ * same instance should be shared.
+ *
  * <pre>{@code
  * @ServiceProvider(ConfigService.class)
  * public class ConfigServiceImpl implements ConfigService {
