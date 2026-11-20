@@ -1,3 +1,5 @@
+import org.jetbrains.kotlin.gradle.dsl.KotlinVersion
+
 plugins {
     id("org.jetbrains.kotlin.jvm")
     id("java-gradle-plugin")
@@ -8,6 +10,16 @@ plugins {
 
 kotlin {
     jvmToolchain(17)
+    compilerOptions {
+        // Consumers' Kotlin DSL compiles build scripts with the Kotlin embedded in their Gradle
+        // distribution (1.8 on Gradle 8.0-8.3, 1.9 on 8.4-8.10), which can read metadata up to
+        // 2.0.0. Publishing 2.4 metadata would make `spi { ... }` fail there with "incompatible
+        // metadata". Kotlin 2.4 no longer supports a language/api level below 2.0, so pin those
+        // at 2.0 and only lower the metadata version.
+        languageVersion.set(KotlinVersion.KOTLIN_2_0)
+        apiVersion.set(KotlinVersion.KOTLIN_2_0)
+        freeCompilerArgs.add("-Xmetadata-version=2.0.0")
+    }
 }
 
 // The Gradle plugin publication is created from the java component, so this also attaches

@@ -38,9 +38,10 @@ android {
     }
 }
 
-// Consumers on the AGP 8.x lines often still use Kotlin 2.0/2.1, which cannot read 2.4
-// metadata. The runtime API surface is plain Kotlin, so emit 2.0 metadata and restrict the
-// API/language level to 2.0 to keep the published AAR consumable.
+// The Kotlin metadata compatibility rule accepts the next major release at x.0.0, so 2.0
+// metadata is readable by Kotlin 1.8+ as well as every 2.x compiler (verified with 1.8.20,
+// 1.9.10 and 1.9.24, including the inline body). Kotlin 2.4 no longer supports a language/API
+// level below 2.0, so keep those at 2.0 and only lower the metadata version.
 kotlin {
     compilerOptions {
         languageVersion.set(KotlinVersion.KOTLIN_2_0)
