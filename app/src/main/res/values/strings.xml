@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Play's install prompt needs this title resource in base; the dynamic module's manifest references it via @string -->
-    <string name="feature_camera_title">Camera</string>
+    <string name="app_name">DroidReel</string>
+    <!-- The dynamic-feature dist:title must resolve in the base resource table. -->
+    <string name="production_module_title">DroidReel Create</string>
 </resources>

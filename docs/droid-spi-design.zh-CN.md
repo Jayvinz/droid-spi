@@ -204,20 +204,20 @@ your-module/src/main/resources/META-INF/services/com.example.core.api.LegacyServ
 进入模块清单 → 聚合校验 → 生成 class 的 `providerAt` / `newProviderAt`。运行时无差别。
 
 前置条件：该模块必须 apply `top.jayvin.droidspi` 插件（否则没有 `{variantName}ScanProviders` 任务）。
-`modules/core-common` 就是只有 SPI 配置、没有注解的最小示例 —— 它的清单输出为：
+`modules/base` 就是只有 SPI 配置、没有注解的最小示例 —— 它的清单输出为：
 
 ```
-com.example.core.api.LegacyService  com.example.core.common.LegacyServiceImpl
+com.example.droidreel.base.api.MediaCatalog  com.example.droidreel.base.media.BundledMediaCatalog
 ```
 
 ### 3.4 清单与聚合
 
-每个模块每个 **variant** 一个 `ScanProvidersTask`（`freeDebugScanProviders`、`paidReleaseScanProviders` 等），
+每个模块每个 **variant** 一个 `ScanProvidersTask`（`freeDebugScanProviders`、`vipReleaseScanProviders` 等），
 输出确定性清单（排序、无时间戳）：
 
 ```
-com.example.core.api.AccountService	com.example.feature.account.AccountServiceImpl		create
-com.example.core.api.AccountService	com.example.feature.account.GuestAccountServiceImpl	guest
+com.example.droidreel.base.api.AccountService	com.example.droidreel.account.LocalAccountService		create
+com.example.droidreel.base.api.FeedSource	com.example.droidreel.community.FollowingFeedSource	following
 ```
 
 四列：`service \t provider \t key \t factory`（`key` 为空串表示默认变体，`factory` 为空表示走无参构造）。
@@ -396,7 +396,7 @@ val configuration = raw as? ProviderConfiguration ?: illegal()
 
 非 Play 渠道下动态分发由宿主自己的通道负责；已经打进包里的 provider 仍然正常可用。
 
-示例中 `:app` 依赖 Play Feature Delivery 并驱动 `SplitInstallManager`；`:modules:feature_camera`
+示例中 `:app` 依赖 Play Feature Delivery 并驱动 `SplitInstallManager`；`:modules:production`
 就是 on-demand split。
 
 ### 4.5 对外门面
@@ -451,7 +451,7 @@ Kotlin 侧则保留 `load<HomeService>()` 内联写法和 `stream()` 的 `Sequen
 
 | 不提供 | 原因 |
 |---|---|
-| `loadOrInstall` / `awaitService` | 安装是异步的，首调不可能拿到实例；混在一起会让返回值语义含糊（下载中 / 未注册 / 永不可用），还要维护跨模块等待队列。业务按需自己组合即可（见示例里的 `MainActivity.openCamera`） |
+| `loadOrInstall` / `awaitService` | 安装是异步的，首调不可能拿到实例；混在一起会让返回值语义含糊（下载中 / 未注册 / 永不可用），还要维护跨模块等待队列。业务按需自己组合即可（见示例里 `CommunityActivity.startCreate` 的探测 → 安装 → 再加载） |
 | 注解级 `singleton` | 缓存 key 是 provider 的 `Class`，split 卸载重装后旧实例会阻止旧 ClassLoader 回收。需要缓存的 provider 自己用 `@ProviderFactory` 返回缓存对象 |
 | `callMethod(key, args...)` | 纯字符串定位方法与"元数据字面量化"冲突 |
 | `getService(service, context)` | 依赖从 `@ProviderFactory` 方法体里取，避免"单例时 factory 只在首次生效"的坑 |
@@ -488,7 +488,7 @@ Kotlin 侧则保留 `load<HomeService>()` 内联写法和 `stream()` 的 `Sequen
 
 “动态模块支持”的范围：框架只负责解析 split 安装后变得可见的 provider，不触发、不跟踪、也不强制安装。
 示例中 `:app` 负责 Play Feature Delivery（`SplitInstallManager`）以及可能的 `SplitCompat` 调用；
-`runtime` 不依赖 Play；`:modules:feature_camera` 就是 on-demand 示例 split。
+`runtime` 不依赖 Play；`:modules:production` 就是 on-demand 示例 split。
 
 WMRouter 的 `ServiceLoader.put()` 是 public static，可以手工接入动态模块，
 但它的表存 `Class` 字面量且初始化一次性（`mHasInit`），
@@ -502,7 +502,7 @@ WMRouter 的 `ServiceLoader.put()` 是 public static，可以手工接入动态�
 |---|---|---|
 | 接口必须在 base | `services()` 的接口字面量若来自动态模块，整表失效 | 约定 + 代码评审（暂无构建期归属校验） |
 | 接口未 import 时猜错包 | 全限定名错误不会在构建期暴露 | 存在 `import a.b.*` 时直接构建失败；其余要求显式 import |
-| 扫描范围 | 按 variant 扫描其声明的静态源码（`src/main` + build type / flavor 叠加目录，来自 `variant.sources`）；生成的源码目录跳过；`META-INF/services` 也只认源码目录、不读依赖产物 | 已记录的行为；demo 的四变体自检验证覆盖 |
+| 扫描范围 | 按 variant 扫描其声明的静态源码（`src/main` + build type / flavor 叠加目录，来自 `variant.sources`）；生成的源码目录跳过；`META-INF/services` 也只认源码目录、不读依赖产物 | 已记录的行为；示例的四变体构建矩阵覆盖 |
 | `@ProviderFactory` 签名未校验 | 参数个数与返回类型未做构建期校验，违反时描述符不匹配、运行时才失败 | 工厂保持无参且返回所在类自身；违反时首次加载 provider 会抛 `NoSuchMethodError` |
 | 按 variant 聚合 | 模块 variant 只有 build type 相同、且声明的 flavor 维度都与 app variant 一致时才被聚合；app 未声明的维度对应的依赖会被跳过（与 AGP 的匹配一致） | 已记录的行为；动态特性模块必须声明 base 模块的 flavor 维度 |
 | 不支持嵌套类 / `typealias` | 扫描器按顶层类型解析 | 已记录的限制；service 请声明为顶层接口 |
@@ -520,19 +520,20 @@ WMRouter 的 `ServiceLoader.put()` 是 public static，可以手工接入动态�
 |---|---|
 | 工具链编译 | `./gradlew :plugin:compileKotlin` ✅ |
 | 运行时单测 | `./gradlew :runtime:testDebugUnitTest` → JVM 上 9 个测试全部通过（注册表行为 + 门面不抛异常 / 降级测试） |
-| 示例 APK | `:app:assembleFreeDebug` ✅；manifest 确认 Application；配置类由 `FreeDebugScanProviders` / `FreeDebugGenerateServiceConfiguration` 生成并打进 base dex |
-| 示例 AAB | `:app:bundleFreeDebug` ✅，`base` / `feature_camera` 分包 |
-| 变体矩阵 | `assembleFreeDebug` / `assemblePaidDebug` / `assembleFreeRelease` / `assemblePaidRelease` 四个组合全部 ✅（clean 后重建亦通过）；`javap` + `dexdump` 确认每个 APK 只含自己 flavor 的 `ChannelServiceImpl`，debug 包另有 `DebugServiceImpl`，release 包没有 |
-| 真机 UI 测试 | 四个 APK 并存安装于小米 M2012K11C（Android 13）；每个自检页均为 `SELF-CHECK PASS 12/12`；截图见 `build/ui-test/`；点击"Re-run checks"与"Camera module"无崩溃（侧载 APK 无 Play 商店，split install 以 -14 错误优雅失败） |
+| 示例 APK | `:app:assembleFreeDebug` ✅（DroidReel 示例）；配置类由 `FreeDebugScanProviders` / `FreeDebugGenerateServiceConfiguration` 生成并打进 base dex |
+| 示例 AAB | `:app:bundleFreeDebug` ✅，`base` / `production` 分包 |
+| 变体矩阵 | `assembleFreeDebug` / `assembleVipDebug` / `assembleFreeRelease` / `assembleVipRelease` 四个组合全部 ✅；`javap` 确认每个包只含自己 flavor 的 `ChannelServiceImpl`，debug 包另有 `DebugInfoServiceImpl`，release 包没有 |
+| 真机 UI 测试 | 四个 APK 并存安装于小米 M2012K11C（Android 13）；个人主页 → **SPI 状态** 显示：两个 debug 包均为 11 条、两个 release 包均为 10 条；`Channel = free` / `vip` 与安装的 flavor 一致；`DemoInfo(debug key)` 仅 debug 存在；`ProductionEntry` 为 MISSING。另在 freeDebug 上验证了登录（`demo` / `123456`）、登录后的 `"following"` 流，以及侧载 APK 上开拍以 -14 错误优雅失败。截图见 `build/ui-test/` |
+| 动态安装 | 用 `bundletool --local-testing` 安装 `:app:bundleFreeDebug` 后，点击开拍完成 `production` split 的下载与安装，创作页在应用未重启的情况下直接打开；随后个人主页 → **SPI 状态** 显示 `ProductionEntry` 为 READY（`load=instance`）；发布通过常驻的 `FeedPublisher` 成功，作品出现在个人主页（2 works） |
 | 增量构建 | 第二次 `:app:assembleFreeDebug` 时所有 `ScanProviders` / `GenerateServiceConfiguration` 任务均为 UP-TO-DATE，确认可缓存任务接线生效 |
 | 增删 provider | 临时增删一个 provider 只重跑该模块的 scan + generate（及下游打包），其它模块 scan 保持 UP-TO-DATE；还原后任务 FROM-CACHE |
 | Build cache | `clean` 后重建时所有 scan + generate 任务 FROM-CACHE；把工程按字节一致地复制到另一个绝对路径后同样全部 FROM-CACHE，验证了 RELATIVE 路径敏感度与确定性输出 |
 | Configuration cache | 存储 + 复用通过；`--configuration-cache` 下改源码仍能重跑 scan/generate；四个 variant 一次构建；`:app:bundleFreeDebug` 通过 |
-| Isolated projects | `-Dorg.gradle.unsafe.isolated-projects=true` 下，存储/复用、增删 provider、四个 variant 与 AAB 构建均通过 |
+| Isolated projects | `-Dorg.gradle.unsafe.isolated-projects=true` 下，`:app:assembleFreeDebug` 的存储/复用通过 |
 | 动态特性不接插件 | 从 `dynamicFeatures` 的某个工程移除插件后仍可正常构建（标准与 isolated 模式）；表中只是没有该特性的 provider，恢复插件后重新出现 |
-| 生成字节码 | `javap -c` 确认：**无 `<clinit>`**、`providerAt` 只有 `ldc`、`newProviderAt` 对 `@ProviderFactory` 用 `INVOKESTATIC`；`services()` / `keys()` 按下标一一对应（debug 8 条、release 7 条） |
-| 分包正确性 | `dexdump` 确认 `CameraServiceImpl` 只在 `feature_camera/dex`，base dex 只有引用 |
-| 标准 SPI 配置 | `modules/core-common` 的 `META-INF/services/...LegacyService` 被扫描进清单（`LegacyService → LegacyServiceImpl`），生成字节码含 `ldc LegacyServiceImpl` 与 `new LegacyServiceImpl`，`MainActivity` 调用 `ServiceLoader.load(LegacyService::class.java)` 返回非空 |
+| 生成字节码 | `javap -c` 确认：**无 `<clinit>`**、`providerAt` 只有 `ldc`、`newProviderAt` 对 `@ProviderFactory` 用 `INVOKESTATIC`；`services()` / `keys()` 按下标一一对应（debug 11 条、release 10 条） |
+| 分包正确性 | AAB 中存在 `production/dex`；base 表只通过 `ldc` 引用 `ProductionEntryImpl`，类本身只存在于 split 中 |
+| 标准 SPI 配置 | `modules/base` 的 `META-INF/services/...MediaCatalog` 被扫描进清单（`MediaCatalog → BundledMediaCatalog`），生成字节码含 `ldc BundledMediaCatalog` 与 `new BundledMediaCatalog`；仓库通过 `ServiceLoader.load(MediaCatalog::class.java)` 取到它 |
 
 ### 8.1 完整回归矩阵（插件大改动后必须跑一遍）
 
@@ -547,13 +548,13 @@ WMRouter 的 `ServiceLoader.put()` 是 public static，可以手工接入动态�
    ```
 2. **clean 构建全部变体**（同时验证 AAB）
    ```bash
-   ./gradlew clean :app:assembleFreeDebug :app:assemblePaidDebug :app:assembleFreeRelease :app:assemblePaidRelease
+   ./gradlew clean :app:assembleFreeDebug :app:assembleVipDebug :app:assembleFreeRelease :app:assembleVipRelease
    ./gradlew :app:bundleFreeDebug
    ```
 3. **逐变体检查生成类**（`javap -p -c`）：只含本 flavor 的 `ChannelServiceImpl`；debug 有
-   `DebugServiceImpl`、release 没有；`services()` 与 `keys()` 长度相等（debug 8 / release 7）；
+   `DebugInfoServiceImpl`、release 没有；`services()` 与 `keys()` 长度相等（debug 11 / release 10）；
    无 `<clinit>`。
-4. **APK/AAB 内容**（`dexdump`）：`CameraServiceImpl` 只在 feature split 中；任何 APK/AAB 都
+4. **APK/AAB 内容**：AAB 中存在 `production/dex`，`ProductionEntryImpl` 只在 split 中；任何 APK/AAB 都
    不应出现 `services.txt` artifact。
 5. **增量**：给某个模块临时加一个 `@ServiceProvider`，构建后确认只有该模块的 scan + generate
    重跑；删除后确认 FROM-CACHE 且生成类恢复。
@@ -565,10 +566,15 @@ WMRouter 的 `ServiceLoader.put()` 是 public static，可以手工接入动态�
    `--isolated-projects`）重复第 6–7 步。
 9. **动态特性容错**：从某个 `dynamicFeatures` 工程移除插件，构建仍须成功且该特性贡献 0 条
    provider；恢复插件后条目重新出现。
-10. **真机矩阵**：安装四个 APK 并逐个启动，确认 `SELF-CHECK PASS 12/12` 及变体相关值
-    （flavor provider、buildType 隔离、条目数）；点击 "Re-run checks" 与 "Camera module"
-    （侧载 APK 上 split install 以 -14 优雅失败）；截图保存在 `build/ui-test/`，并确认没有
+10. **真机矩阵**：安装四个 APK 并逐个启动，查看个人主页 → **SPI 状态**（条目数 debug 11 /
+    release 10、flavor provider、buildType 隔离、安装前 `ProductionEntry` 为 MISSING）；
+    点击开拍（侧载 APK 上 split install 以 -14 优雅失败）；截图保存在 `build/ui-test/`，并确认没有
     `AndroidRuntime` 异常。
+11. **动态安装**：构建 AAB，用 bundletool `--local-testing` 安装；登录后点击开拍，确认 split 完成
+    安装、创作页无需重启即打开、SPI 状态中 `ProductionEntry` 为 READY，并且发布后作品进入推荐流与
+    个人主页。
 
-已知缺口：真实 Play 动态安装后的 `MISSING → READY` 切换无法用侧载 APK 验证；运行时单测用假
-`ProviderConfiguration` 覆盖了等价的状态迁移。
+`MISSING → READY` 切换已通过 `:app:bundleFreeDebug` 的 bundletool local-testing 安装做了端到端验证：
+开拍触发 Play Core 安装，split 对运行中的进程可见，`ProductionEntry` 在应用未重启的情况下从
+MISSING 变为 READY，发布经 `FeedPublisher` 把作品加入社区仓库。真实 Play 内部测试轨道的下发安装
+仍未在此验证；运行时单测另外用假 `ProviderConfiguration` 覆盖了同样的状态迁移。

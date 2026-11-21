@@ -1,0 +1,3 @@
+# Simulates a third-party library declaring a provider through the JDK SPI convention.
+# The syntax is identical to java.util.ServiceLoader: one implementation FQN per line.
+com.example.droidreel.base.media.BundledMediaCatalog

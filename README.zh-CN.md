@@ -51,8 +51,8 @@ dependencies {
 
 ## 声明 provider
 
-以一个按功能拆分模块的电商 App 为例：首页推荐流、账户中心，以及放在按需下发模块里的相机页。
-仓库里 `app/` + `modules/` 的接入示例跑的就是这套代码。
+以一个按功能拆分模块的短视频 App 为例：推荐流与个人主页、账户中心，以及放在按需下发模块里的创作页。
+仓库里的 DroidReel 示例跑的就是这套代码。
 
 大型多 module 工程天然依赖隔离：业务模块 B 需要用到业务模块 A 提供的能力，但 B 不能依赖 A，
 也不该感知 A 的具体实现。在 base / 主模块定义服务的契约接口，业务模块 A 提供实现，业务模块 B
@@ -66,42 +66,38 @@ B 不引用 A 的任何代码，运行时由构建期生成的表把两边连起
 各业务模块都能编译期依赖它：
 
 ```kotlin
-// :modules:core-api —— 契约。调用方与实现方都只依赖这个模块
-interface HomeService {
-    fun title(): String
-    fun recommendations(): List<String>
+// :modules:base —— 契约。调用方与实现方都只依赖这个模块
+interface FeedSource {
+    fun load(page: Int, pageSize: Int): FeedPage
 }
 ```
 
 实现放在它所属的模块，普通实现只需要一个注解。调用方永远不会依赖这个模块：
 
 ```kotlin
-// :modules:feature-home —— 实现契约；调用方不引用这个模块
-@ServiceProvider(service = HomeService::class)
-class HomeServiceImpl : HomeService {
-    override fun title() = "首页"
-    override fun recommendations() = listOf("跑鞋限时折扣", "本周新品")
+// :modules:community —— 实现契约；调用方不引用这个模块
+@ServiceProvider(service = FeedSource::class)
+class RecommendFeedSource : FeedSource {
+    override fun load(page: Int, pageSize: Int) = pagedIds(
+        CommunityRepository.recommend(), page, pageSize,
+    )
 }
 ```
 
 同一个接口可以挂 keyed 变体，调用方在查询时指定要哪一个：
 
 ```kotlin
-@ServiceProvider(service = HomeService::class, key = "vip")
-class VipHomeServiceImpl : HomeService {
-    override fun title() = "首页 · VIP"
-    override fun recommendations() = listOf("会员专属尖货", "免邮券")
-}
-
-@ServiceProvider(service = AccountService::class, key = "guest")
-class GuestAccountServiceImpl : AccountService {
-    override fun userName() = "游客"
-    override fun level() = "未登录"
+@ServiceProvider(service = FeedSource::class, key = "following")
+class FollowingFeedSource : FeedSource {
+    override fun load(page: Int, pageSize: Int) = pagedIds(
+        CommunityRepository.following(), page, pageSize,
+    )
 }
 ```
 
-纯 Java 工程：`@ServiceProvider(service = HomeService.class)`。已经提供 JDK SPI 配置文件的
-第三方库，把 `META-INF/services/<接口 FQN>` 放进模块的 source resources 即可接入。
+纯 Java 工程：`@ServiceProvider(service = FeedSource.class)`。已经提供 JDK SPI 配置文件的
+第三方库，把 `META-INF/services/<接口 FQN>` 放进模块的 source resources 即可接入；示例里的
+种子媒体目录就是这样声明的。
 
 ### 构造方式与 `@ProviderFactory`
 
@@ -153,15 +149,15 @@ provider 类字面量，所以可用性与 dynamic feature 行为不变。工厂
 // 可选：在 Application.onCreate 中提前初始化；不调用则在第一次查询时懒加载
 ServiceLoader.initialize()
 
-// 首页 feed：取默认实现，缺失时为 null
-val home = ServiceLoader.load<HomeService>()
-recycler.submitList(home?.recommendations().orEmpty())
+// 推荐流：取默认实现，缺失时为 null
+val feed = ServiceLoader.load<FeedSource>()
+recycler.submitList(feed?.load(page = 0, pageSize = 30)?.videoIds.orEmpty())
 
-// 会员场景：同一个接口，换一个 key
-val vip = ServiceLoader.load<HomeService>("vip")
+// 关注页：同一个接口，换一个 key
+val following = ServiceLoader.load<FeedSource>("following")
 
-// 账户中心：登录态走默认实现，未登录降级到 guest
-val account = ServiceLoader.load<AccountService>() ?: ServiceLoader.load<AccountService>("guest")
+// 账户中心：只有这一个实现；账户模块缺失时返回 null
+val account = ServiceLoader.load<AccountService>()
 ```
 
 业务模块 B 的代码只 import 契约接口：实现来自哪个模块（业务模块 A）、那个模块装没装，都不会漏到
@@ -170,7 +166,7 @@ val account = ServiceLoader.load<AccountService>() ?: ServiceLoader.load<Account
 API 就这么几个：`load(service, key)` 取单个实例，`loadAll(service)` 返回 `key -> 实例` 的 map，
 `providers()` / `stream()` 枚举全部条目，`loadClass()` 只取 class 不触发初始化，
 `stateOf()` 回答 `READY` / `MISSING` / `DEAD`。Kotlin 也可以写成上面那样的
-`ServiceLoader.load<HomeService>()`。
+`ServiceLoader.load<FeedSource>()`。
 
 框架不缓存实例：每次 `load()` / `Provider.get()` 都会重新构造 provider（或调用它的
 `@ProviderFactory`），只有配置表会被加载一次并常驻。需要全局唯一实例的 provider，应让工厂返回
@@ -178,29 +174,29 @@ API 就这么几个：`load(service, key)` 取单个实例，`loadAll(service)` 
 
 ### Dynamic feature
 
-相机页放在按需下发模块里，base 根本编译不到 `CameraServiceImpl`。在 app 中声明模块
-（`dynamicFeatures += setOf(":modules:feature_camera")`）并对其 apply 插件。页面跳转由实现自己完成，
-base 永远不需要知道 `CameraActivity` 的类名：
+创作页放在按需下发模块里，base 根本编译不到 `ProductionEntryImpl`。在 app 中声明模块
+（`dynamicFeatures += setOf(":modules:production")`）并对其 apply 插件。页面跳转由实现自己完成，
+调用方永远不需要知道 `ProductionHubActivity` 的类名：
 
 ```kotlin
-// :modules:feature_camera —— 契约调用在这个模块未安装时也能成立
-@ServiceProvider(service = CameraService::class)
-class CameraServiceImpl : CameraService {
-    override fun open(context: Context) {
-        context.startActivity(Intent(context, CameraActivity::class.java))
+// :modules:production —— 契约调用在这个模块未安装时也能成立
+@ServiceProvider(service = ProductionEntry::class)
+class ProductionEntryImpl : ProductionEntry {
+    override fun openCreate(context: Context) {
+        context.startActivity(Intent(context, ProductionHubActivity::class.java))
     }
 }
 ```
 
-相机按钮只需要探测一下：
+开拍按钮只需要探测一下：
 
 ```kotlin
-fun onCameraClick(context: Context) {
-    val camera = ServiceLoader.load(CameraService::class.java)
-    if (camera != null) {
-        camera.open(context)          // 已安装：实现自己打开页面
+fun onCreateClick(context: Context) {
+    val production = ServiceLoader.load(ProductionEntry::class.java)
+    if (production != null) {
+        production.openCreate(context)   // 已安装：实现自己打开页面
     } else {
-        installFeatureCamera()        // 申请 "feature_camera" split，例如走 Play Feature Delivery
+        installProduction()              // 申请 "production" split，例如走 Play Feature Delivery
     }
 }
 ```
@@ -209,9 +205,9 @@ fun onCameraClick(context: Context) {
 
 ### flavor 与 buildType 变体
 
-每个 variant 有自己的一张表，实现可以跟着真实工程已在用的源集走：`free` / `paid` 两个 flavor
-各自在 `src/free`、`src/paid` 里提供 `ChannelService`，只在调试用的服务放在 `app/src/debug`，
-release 表里干脆没有这条记录。`paid` 包只会看到 `paid` 的实现，不需要任何接线。
+每个 variant 有自己的一张表，实现可以跟着真实工程已在用的源集走：示例的 `free` / `vip` 两个
+flavor 各自在 `src/free`、`src/vip` 里提供 `ChannelService`，只在调试用的 `DemoInfoService` 放在
+`app/src/debug`，release 表里干脆没有这条记录。`vip` 包只会看到 `vip` 的实现，不需要任何接线。
 
 ### 多个默认实现
 
@@ -227,8 +223,8 @@ release 表里干脆没有这条记录。`paid` 包只会看到 `paid` 的实现
 最直接的是字符串类名加反射。调用方编译不到实现，类名只能以字符串传递：
 
 ```kotlin
-val clazz = Class.forName("com.example.feature.home.HomeServiceImpl")
-val home = clazz.getDeclaredConstructor().newInstance() as HomeService
+val clazz = Class.forName("com.example.droidreel.community.RecommendFeedSource")
+val feed = clazz.getDeclaredConstructor().newInstance() as FeedSource
 ```
 
 改个类名不会有任何编译错误，字符串悄悄失效；R8 需要 `-keep` 规则才能留住这个类；
@@ -245,7 +241,7 @@ object ServiceRegistry {
 }
 
 // 每个 feature 的初始化代码里
-ServiceRegistry.put(HomeService::class.java, HomeServiceImpl())
+ServiceRegistry.put(FeedSource::class.java, RecommendFeedSource())
 ```
 
 没有反射了，但每个 feature 都得记得注册，还要有人按正确顺序触发这些初始化；key 变体、
@@ -255,7 +251,7 @@ buildType 差异、动态模块，最后都变成手写分支。
 看起来是现成答案：
 
 ```kotlin
-val home = java.util.ServiceLoader.load(HomeService::class.java).first()
+val feed = java.util.ServiceLoader.load(FeedSource::class.java).first()
 ```
 
 它的底层仍是拿 `META-INF/services` 文本做反射，改名和 R8 的问题一个不少；没有 `key`，
@@ -288,8 +284,10 @@ Droid-spi 保留 `ServiceLoader` 的调用形状，把表前移到构建期：�
 | `annotation/` | `@ServiceProvider` 与 `@ProviderFactory`，CLASS 保留，不进运行时。 |
 | `runtime/` | `ServiceLoader` 门面与注册表。查生成表取 provider，全程零反射。 |
 
-其余部分都是接入示例：`app/` 与 `modules/` 组成两个 flavor × 两个 buildType 的 demo，外加按需下发的
-相机模块，带一个自检界面，在真机上逐条验证整张 provider 表。
+其余部分都是接入示例：`app/` 是 **DroidReel**，一个 Compose 短视频 demo，包含 `free` / `vip`
+两个 flavor × 两个 buildType；`modules/` 提供它的契约、账户、社区与按需下发的创作模块。个人主页的
+**SPI 状态** 弹窗会列出生成的 provider 表，用于真机验证。构建与运行说明见
+[docs/example-app.md](docs/example-app.md)。
 
 ## 了解更多
 

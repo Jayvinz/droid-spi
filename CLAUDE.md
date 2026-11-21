@@ -10,8 +10,9 @@ the published artifacts (`top.jayvin.droidspi:*`); `configuration-stub/` and `bu
 supporting build infrastructure, not product code.
 
 Every other module is an **integration example that exercises the plugin**, not a deliverable of
-its own: `app/` (demo application), `modules/**` (demo service interfaces and provider modules),
-and `compat/**` (AGP / Gradle compatibility fixtures). Judge changes accordingly:
+its own: `app/` is the **DroidReel** demo application, `modules/**` supplies its contracts and
+provider modules, and `compat/**` holds AGP / Gradle compatibility fixtures. Judge changes
+accordingly:
 
 - Framework behavior belongs in `plugin/`, `runtime/` or `annotation/`. A defect observed in a
   demo module is still fixed in the framework, not patched in the demo.
@@ -47,7 +48,8 @@ there is no `Class.forName` and no reflective provider construction anywhere.
 Design document: `docs/droid-spi-design.md` (Chinese: `docs/droid-spi-design.zh-CN.md`).
 User documentation: `README.md` (Chinese: `README.zh-CN.md`)
 (terminology mapping, integration steps, known limitations). Long-form articles live in
-`docs/articles/` in both languages.
+`docs/articles/` in both languages. Example documentation: `docs/example-app.md` (DroidReel
+modules, provider table, build/run and dynamic-feature local testing).
 
 Published coordinates (the brand is `Droid-spi`; the Java package is deliberately decoupled
 from it and stays `top.jayvin.android.spi`):
@@ -64,9 +66,9 @@ from it and stays `top.jayvin.android.spi`):
 # not as project dependencies.
 ./gradlew :annotation:publish :runtime:publish :plugin:publish
 
-./gradlew :app:assembleFreeDebug   # one variant (flavors: free / paid; build types: debug / release)
-./gradlew :app:assembleFreeDebug :app:assemblePaidDebug :app:assembleFreeRelease :app:assemblePaidRelease
-./gradlew :app:bundleFreeDebug     # demo AAB (includes the feature_camera split)
+./gradlew :app:assembleFreeDebug   # one variant (flavors: free / vip; build types: debug / release)
+./gradlew :app:assembleFreeDebug :app:assembleVipDebug :app:assembleFreeRelease :app:assembleVipRelease
+./gradlew :app:bundleFreeDebug     # demo AAB (includes the production split)
 
 # Runtime unit tests (all) and the plugin's merge-validation tests
 ./gradlew :runtime:testDebugUnitTest
@@ -99,14 +101,15 @@ After any change to scanning, aggregation, artifact wiring, or caching, run the 
 ```bash
 ./gradlew :annotation:publish :runtime:publish :plugin:publish
 ./gradlew :runtime:testDebugUnitTest --rerun-tasks
-./gradlew clean :app:assembleFreeDebug :app:assemblePaidDebug :app:assembleFreeRelease :app:assemblePaidRelease
+./gradlew clean :app:assembleFreeDebug :app:assembleVipDebug :app:assembleFreeRelease :app:assembleVipRelease
 ./gradlew :app:assembleFreeDebug --configuration-cache
 ./gradlew :app:assembleFreeDebug --configuration-cache -Dorg.gradle.unsafe.isolated-projects=true
 ```
 
 Then add and remove a temporary `@ServiceProvider` once with each cache mode to prove the
 scan → generate edges survive, inspect the generated classes and APK contents, and re-run the
-four-variant on-device self-check screen.
+four-variant on-device check (Profile → **SPI status**: 11 entries in debug, 10 in release,
+the installed flavor's `ChannelService`, and `ProductionEntry` MISSING until the split installs).
 
 ## Release
 
@@ -146,10 +149,11 @@ Single Gradle build; `settings.gradle.kts` includes everything:
 | `plugin/` | Gradle plugin: `SpiPlugin`, scan tasks, ASM generator, `java-gradle-plugin` |
 | `configuration-stub/` | compileOnly placeholder class for runtime (same `ServiceConfiguration` name; not published, not packaged) |
 | `buildSrc/` | Convention plugins shared by the framework modules (`framework-publishing`: group, version, local-repo). A precompiled script plugin resolves Gradle API types in the IDE, unlike an applied `gradle/*.gradle.kts` script |
-| `app/` | Demo application module; the only module registering the generate task; its Application calls `ServiceLoader.initialize()`. It declares the `channel` flavor dimension (`free` / `paid`) and its self-check screen (`MainActivity`) is the on-device UI test matrix |
-| `modules/core-api/` | All service **interfaces** (must live in base) |
-| `modules/core-common/` | Resident library example that only has `META-INF/services` configuration |
-| `modules/feature-*/` | Provider implementations; `feature_camera` is an on-demand dynamic module |
+| `app/` | **DroidReel** example application; the only module registering the generate task; its Application extends `SplitCompatApplication` and calls `ServiceLoader.initialize()`. It declares the `channel` flavor dimension (`free` / `vip`), `dynamicFeatures = production`, and a debug-only diagnostics provider. Profile → **SPI status** is the on-device table check |
+| `modules/base/` | All service **interfaces**, models, session core, theme, and the `META-INF/services` media catalog (must live in base) |
+| `modules/account/` | Login UI and `LocalAccountService` (private constructor + `@ProviderFactory`) |
+| `modules/community/` | Feed, player, profile, repository, keyed `FeedSource`s, `FeedPublisher`, and the flavor-scoped `ChannelService` |
+| `modules/production/` | Publishing screen; the on-demand dynamic module |
 | `local-repo/` | Publish output of the framework modules (local Maven repository, gitignored) |
 
 ## Compile-time pipeline
@@ -175,7 +179,7 @@ Single Gradle build; `settings.gradle.kts` includes everything:
    `toAppend(ScopedArtifact.CLASSES)` on **its own variant** and does not read the `CLASSES`
    input, so the task graph has no cycle.
 
-**Aggregation is per variant, not per build type**: `freeDebug` and `paidDebug` compile disjoint
+**Aggregation is per variant, not per build type**: `freeDebug` and `vipDebug` compile disjoint
 flavor sources and get separate tables and separate generated classes. Every variant wires its
 own `toAppend`; wiring only the first variant of a build type would silently leave the other
 flavors without `ServiceConfiguration` at runtime.
@@ -279,8 +283,8 @@ These are correctness red lines, not style preferences:
   `initialize()`); runtime compiles against the
   `configuration-stub` compileOnly placeholder, and the placeholder is never packaged.
   If the class is missing, it only logs and degrades to an empty configuration.
-- R8: base reports missing classes for uninstalled modules; add `-dontwarn` per module
-  (see `app/proguard-rules.pro`).
+- R8: base reports missing classes for uninstalled modules; when a consumer enables minification,
+  add `-dontwarn` per module. The example keeps `isMinifyEnabled = false`, so it ships no rules file.
 - Environment: JDK 17, Gradle 9.6, AGP 9.5.1, Kotlin JVM 2.4.21 (Gradle plugin module only),
   compileSdk 35; `local.properties` contains the local SDK path.
 - Android modules no longer apply `org.jetbrains.kotlin.android`: AGP 9 has built-in Kotlin and

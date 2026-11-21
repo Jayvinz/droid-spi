@@ -20,7 +20,7 @@ For every Android module and every variant, the plugin registers a `{variant}Sca
 task. Its input is the variant's declared source directories, taken from `variant.sources`
 (`java.static`, `kotlin.static`, and `resources.static` when `META-INF/services` scanning is
 enabled). That detail matters: using `src/main` directly would miss `src/debug`, `src/free`,
-`src/paid`, and every other overlay.
+`src/vip`, and every other overlay.
 
 The scanner is intentionally not an AST parser. It strips comments and masks string contents,
 then matches annotations and finds the enclosing class by bracket depth. That keeps the plugin
@@ -145,7 +145,7 @@ build-cache entries are relocatable. The verification matrix in the design docum
 - incremental add/remove of a `@ServiceProvider`;
 - build-cache hits with a relocated project directory;
 - configuration cache store and reuse, with and without isolated projects;
-- on-device self-check across every variant.
+- on-device SPI status across every variant.
 
 The last one is not decorative: it is the only way to catch a variant whose generated class was
 never appended, because the build still succeeds while `ServiceConfiguration` is missing at

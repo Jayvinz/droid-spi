@@ -2,9 +2,15 @@ pluginManagement {
     // Framework version is defined once in gradle.properties (spiVersion).
     plugins {
         id("top.jayvin.droidspi") version providers.gradleProperty("spiVersion").get()
+        // AGP 9's built-in Kotlin is KGP 2.2.10, so the Compose compiler plugin must match it.
+        // Declared here rather than in the root build script: the root classpath also carries
+        // Kotlin JVM 2.4.21 for the plugin module, and mixing the two Kotlin plugin versions
+        // there makes Gradle's embedded-Kotlin annotation pin unresolvable.
+        id("org.jetbrains.kotlin.plugin.compose") version "2.2.10"
     }
     repositories {
-        // The framework is published here; demo modules consume the plugin from the same repository
+        // The framework is published here; the example modules consume the plugin from the same
+        // repository.
         maven {
             name = "localSpi"
             url = uri("local-repo")
@@ -39,12 +45,10 @@ include(":runtime")
 include(":plugin")
 include(":configuration-stub")
 
-// Demo main module
+// Example application (DroidReel) and its feature modules. The application is the only module
+// that generates the ServiceConfiguration table; the others only contribute providers.
 include(":app")
-
-// Demo non-main modules, all under modules/
-include(":modules:core-api")
-include(":modules:core-common")
-include(":modules:feature-home")
-include(":modules:feature-account")
-include(":modules:feature_camera")
+include(":modules:base")
+include(":modules:account")
+include(":modules:community")
+include(":modules:production")

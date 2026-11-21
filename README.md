@@ -60,9 +60,9 @@ dependencies {
 
 ## Declare a provider
 
-A shopping app split into feature modules makes a good example: a home feed, an account center,
-and a camera page that ships in an on-demand module. The `app/` + `modules/` integration example
-in this repo runs the same code.
+A short-video app split into feature modules makes a good example: a feed and profile, an account
+center, and a publishing page that ships in an on-demand module. The DroidReel example in this repo
+runs the same code.
 
 Large multi-module builds are dependency-isolated by design: business module B needs behavior
 that lives in business module A, yet B must not depend on A and should not know anything about
@@ -78,10 +78,9 @@ B never references A's code; the build-time table is what connects the two sides
 contract lives in a base / resident module, so every feature can compile against it:
 
 ```kotlin
-// :modules:core-api — the contract. Callers and implementors both depend on this module only.
-interface HomeService {
-    fun title(): String
-    fun recommendations(): List<String>
+// :modules:base — the contract. Callers and implementors both depend on this module only.
+interface FeedSource {
+    fun load(page: Int, pageSize: Int): FeedPage
 }
 ```
 
@@ -89,33 +88,29 @@ Implementations live wherever they belong. A plain one needs nothing but the ann
 caller ever depends on this module:
 
 ```kotlin
-// :modules:feature-home — implements the contract; callers never reference this module
-@ServiceProvider(service = HomeService::class)
-class HomeServiceImpl : HomeService {
-    override fun title() = "Home"
-    override fun recommendations() = listOf("Running shoes on sale", "New arrivals this week")
+// :modules:community — implements the contract; callers never reference this module
+@ServiceProvider(service = FeedSource::class)
+class RecommendFeedSource : FeedSource {
+    override fun load(page: Int, pageSize: Int) = pagedIds(
+        CommunityRepository.recommend(), page, pageSize,
+    )
 }
 ```
 
 The same interface can carry a keyed variant. Callers pick the one they need at lookup time:
 
 ```kotlin
-@ServiceProvider(service = HomeService::class, key = "vip")
-class VipHomeServiceImpl : HomeService {
-    override fun title() = "Home · VIP"
-    override fun recommendations() = listOf("Members-only drop", "Free shipping voucher")
-}
-
-@ServiceProvider(service = AccountService::class, key = "guest")
-class GuestAccountServiceImpl : AccountService {
-    override fun userName() = "Guest"
-    override fun level() = "Not signed in"
+@ServiceProvider(service = FeedSource::class, key = "following")
+class FollowingFeedSource : FeedSource {
+    override fun load(page: Int, pageSize: Int) = pagedIds(
+        CommunityRepository.following(), page, pageSize,
+    )
 }
 ```
 
-Pure Java: `@ServiceProvider(service = HomeService.class)`. Libraries that already ship a JDK SPI
+Pure Java: `@ServiceProvider(service = FeedSource.class)`. Libraries that already ship a JDK SPI
 descriptor can be integrated by placing the `META-INF/services/<interface FQN>` file under the
-module's source resources.
+module's source resources; the example declares its seeded media catalog that way.
 
 ### Construction and `@ProviderFactory`
 
@@ -164,21 +159,24 @@ checked, and a mismatch fails as `NoSuchMethodError` on the first load. `stateOf
 still resolve the provider class literal, so availability and dynamic-feature behavior are
 unchanged. A factory that throws makes that `load()` return `null` and is retried on the next call.
 
+The example's `LocalAccountService` uses exactly this shape: its private constructor takes the
+application context, and `create()` returns one lazily created instance.
+
 ## Use
 
 ```kotlin
 // optional: initialize eagerly in Application.onCreate; otherwise the first lookup does it
 ServiceLoader.initialize()
 
-// home feed screen: the default implementation, or null when it is missing
-val home = ServiceLoader.load<HomeService>()
-recycler.submitList(home?.recommendations().orEmpty())
+// feed screen: the default implementation, or null when it is missing
+val feed = ServiceLoader.load<FeedSource>()
+recycler.submitList(feed?.load(page = 0, pageSize = 30)?.videoIds.orEmpty())
 
-// membership UI: same interface, different key
-val vip = ServiceLoader.load<HomeService>("vip")
+// following tab: same interface, different key
+val following = ServiceLoader.load<FeedSource>("following")
 
-// account center: signed-in implementation, guest variant as the signed-out fallback
-val account = ServiceLoader.load<AccountService>() ?: ServiceLoader.load<AccountService>("guest")
+// account center: the only implementation, null when the account module is absent
+val account = ServiceLoader.load<AccountService>()
 ```
 
 Module B's code imports only the contract interface. Which module implements it (module A), and
@@ -187,7 +185,7 @@ whether that module is even installed, never leaks into the call site.
 The full surface is small: `load(service, key)` for one instance, `loadAll(service)` for a
 `key -> instance` map, `providers()` / `stream()` to enumerate every entry, `loadClass()` to get
 the class without initializing it, and `stateOf()` which answers `READY` / `MISSING` / `DEAD`.
-Kotlin also has `ServiceLoader.load<HomeService>()` as shown above.
+Kotlin also has `ServiceLoader.load<FeedSource>()` as shown above.
 
 Instances are not cached: every `load()` / `Provider.get()` constructs the provider again (or
 calls its `@ProviderFactory`). Only the configuration table is loaded once and kept. A provider
@@ -196,30 +194,30 @@ that must be a single shared object should return that object from its factory (
 
 ### Dynamic features
 
-The camera page ships in an on-demand module, so the base app cannot compile against
-`CameraServiceImpl`. Declare the module in the app (`dynamicFeatures += setOf(":modules:feature_camera")`)
-and apply the plugin to it. The implementation opens its own page, so base never learns the
-`CameraActivity` class name:
+The publishing page ships in an on-demand module, so the base app cannot compile against
+`ProductionEntryImpl`. Declare the module in the app (`dynamicFeatures += setOf(":modules:production")`)
+and apply the plugin to it. The implementation opens its own screen, so callers never learn the
+`ProductionHubActivity` class name:
 
 ```kotlin
-// :modules:feature_camera — the contract call works even when this module is not installed yet
-@ServiceProvider(service = CameraService::class)
-class CameraServiceImpl : CameraService {
-    override fun open(context: Context) {
-        context.startActivity(Intent(context, CameraActivity::class.java))
+// :modules:production — the contract call works even when this module is not installed yet
+@ServiceProvider(service = ProductionEntry::class)
+class ProductionEntryImpl : ProductionEntry {
+    override fun openCreate(context: Context) {
+        context.startActivity(Intent(context, ProductionHubActivity::class.java))
     }
 }
 ```
 
-A camera button then only has to probe:
+A Create button then only has to probe:
 
 ```kotlin
-fun onCameraClick(context: Context) {
-    val camera = ServiceLoader.load(CameraService::class.java)
-    if (camera != null) {
-        camera.open(context)          // installed: the implementation opens its own page
+fun onCreateClick(context: Context) {
+    val production = ServiceLoader.load(ProductionEntry::class.java)
+    if (production != null) {
+        production.openCreate(context)   // installed: the implementation opens its own screen
     } else {
-        installFeatureCamera()        // request the "feature_camera" split, e.g. via Play Feature Delivery
+        installProduction()              // request the "production" split via Play Feature Delivery
     }
 }
 ```
@@ -230,9 +228,9 @@ instance. No install listener, no refresh.
 ### Flavor and build type variants
 
 Each variant gets its own table, so implementations can follow the source sets a real app already
-uses. A `free` / `paid` flavor pair can each provide `ChannelService` from `src/free` and
-`src/paid`, and a debug-only service under `app/src/debug` simply has no entry in release tables.
-A `paid` build only ever sees the `paid` provider. Nothing to wire.
+uses. The example's `free` / `vip` flavor pair each provide `ChannelService` from `src/free` and
+`src/vip`, and a debug-only `DemoInfoService` under `app/src/debug` simply has no entry in release
+tables. A `vip` build only ever sees the `vip` provider. Nothing to wire.
 
 ### Several default implementations
 
@@ -249,8 +247,8 @@ String class names plus reflection is the simplest fix. The caller cannot compil
 feature, so the class name travels as a string:
 
 ```kotlin
-val clazz = Class.forName("com.example.feature.home.HomeServiceImpl")
-val home = clazz.getDeclaredConstructor().newInstance() as HomeService
+val clazz = Class.forName("com.example.droidreel.community.RecommendFeedSource")
+val feed = clazz.getDeclaredConstructor().newInstance() as FeedSource
 ```
 
 Renaming the class breaks the string silently, R8 needs `-keep` rules to see the class at all,
@@ -268,7 +266,7 @@ object ServiceRegistry {
 }
 
 // somewhere in every feature's initializer
-ServiceRegistry.put(HomeService::class.java, HomeServiceImpl())
+ServiceRegistry.put(FeedSource::class.java, RecommendFeedSource())
 ```
 
 No reflection here, but every feature must remember to register, something must trigger those
@@ -279,7 +277,7 @@ When the interface already follows the JDK convention, `java.util.ServiceLoader`
 AutoService) is the obvious pick:
 
 ```kotlin
-val home = java.util.ServiceLoader.load(HomeService::class.java).first()
+val feed = java.util.ServiceLoader.load(FeedSource::class.java).first()
 ```
 
 Under the hood this is reflection over `META-INF/services` strings, so the rename and R8 problems
@@ -317,9 +315,11 @@ The library itself is three modules:
 | `annotation/` | `@ServiceProvider` and `@ProviderFactory`. CLASS retention; the annotations never enter the runtime. |
 | `runtime/` | The `ServiceLoader` facade and its registry. Looks providers up in the generated table, zero reflection. |
 
-Everything else is an integration example: `app/` and `modules/` form a demo with two flavors ×
-two build types plus the on-demand camera module, with a self-check screen that verifies the whole
-provider table on a device.
+Everything else is an integration example: `app/` is **DroidReel**, a Compose short-video demo with
+two `free` / `vip` flavors × two build types, and `modules/` supplies its contracts, account,
+community, and on-demand production modules. The profile screen's **SPI status** dialog lists the
+generated table for on-device verification. Build and run notes are in
+[docs/example-app.md](docs/example-app.md).
 
 ## Learn more
 

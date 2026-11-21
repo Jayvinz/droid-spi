@@ -9,7 +9,7 @@
 
 - base 模块需要调用某个功能模块，但依赖方向是反的。
 - 实现位于按需下载的动态功能模块中，因此在用户安装之前，这个类在进程里根本不存在。
-- 你想要随变体变化的实现（`free` 对 `paid`、`debug` 对 `release`），又不想在半个应用里铺满 `if`。
+- 你想要随变体变化的实现（`free` 对 `vip`、`debug` 对 `release`），又不想在半个应用里铺满 `if`。
 
 经典方案是反射（`Class.forName` 加注册表）、DI 图，或 Google 的 AutoService。它们各有代价：
 反射是字符串类型的，容易写错且难以重构；DI 图在编译期就是闭合的，无法表达"这个类还没安装"；
@@ -68,7 +68,7 @@ val all  = ServiceLoader.loadAll(HomeService::class.java)       // key -> 实例
 
 这正是它对 App Bundle 有用的原因。
 
-动态功能模块依赖 base 应用，而不是反过来。base 无法针对 `CameraServiceImpl` 编译，因为这个类
+动态功能模块依赖 base 应用，而不是反过来。base 无法针对 `ProductionEntryImpl` 编译，因为这个类
 不在它的编译类路径上。那么 base 中的代码要怎么调用它？
 
 `Droid-spi` 在构建期化解了这个矛盾：
@@ -86,23 +86,23 @@ val all  = ServiceLoader.loadAll(HomeService::class.java)       // key -> 实例
 
 ## 变体是一等公民
 
-`freeDebug` 和 `paidDebug` 编译的是不同的源集。如果按"构建类型"聚合，就会在不知不觉中把某个
+`freeDebug` 和 `vipDebug` 编译的是不同的源集。如果按"构建类型"聚合，就会在不知不觉中把某个
 flavor 的 provider 给到另一个 flavor，因此聚合是按**变体**进行的：
 
 - `freeDebug` 拥有自己的扫描任务、自己的清单、自己的生成类。
 - 生成类被追加到该变体的 `CLASSES` artifact 上，打包时会自动选中正确的那一份。
-- `paidDebug` 完全独立。
+- `vipDebug` 完全独立。
 
-仓库中的 demo 包含两个 flavor × 两个构建类型，并有一个自检界面，在真机上验证全部 12 条不变量，
-包括"仅 debug 存在的 provider 只出现在 debug 构建中"以及"flavor 专属 provider 在 free 与 paid
+仓库中的 DroidReel 示例包含两个 flavor × 两个构建类型，个人主页可以查看生成的 provider 表，
+包括"仅 debug 存在的 provider 只出现在 debug 构建中"以及"flavor 专属 provider 在 free 与 vip
 之间不同"。
 
 ## 第三方 `META-INF/services` 怎么办
 
 如果某个库已经按 JDK SPI 规范提供了描述文件，你不需要 fork 它。把
 `META-INF/services/<接口 FQN>` 文件放到模块的源码 resources 目录下即可。扫描器会读取它，并把每个
-条目当作注解声明处理，区别在于条目映射到默认 key，且要求实现类有 public 无参构造函数。demo 中的
-`:modules:core-common` 就是这样接入一个遗留 provider 的。
+条目当作注解声明处理，区别在于条目映射到默认 key，且要求实现类有 public 无参构造函数。DroidReel
+示例中的 `modules/base` 种子媒体目录就是这样接入的。
 
 ## 安装并试用
 

@@ -11,7 +11,7 @@ If you maintain a large Android app, you eventually hit one of these walls:
 - A base module needs to call into a feature module, but the dependency direction is inverted.
 - The implementation lives in an on-demand dynamic feature, so the class literally does not
   exist in the process until the user installs it.
-- You want a variant-specific implementation (`free` vs `paid`, `debug` vs `release`) without
+- You want a variant-specific implementation (`free` vs `vip`, `debug` vs `release`) without
   wiring an `if` through half the app.
 
 Classic answers are reflection (`Class.forName` plus a registry), a DI graph, or Google's
@@ -74,7 +74,7 @@ That is the whole API surface you need for the common case. Notice what is missi
 This is the part that makes it useful for App Bundles.
 
 A dynamic feature module depends on the base app, not the other way around. The base cannot
-compile against `CameraServiceImpl` because the class is not on its compile classpath. So how
+compile against `ProductionEntryImpl` because the class is not on its compile classpath. So how
 does base code call it?
 
 `Droid-spi` resolves the contradiction at build time:
@@ -95,25 +95,25 @@ table. The generator deliberately emits no `<clinit>`; every literal sits inside
 
 ## Variants are first-class
 
-`freeDebug` and `paidDebug` compile different source sets. Aggregating "per build type" would
+`freeDebug` and `vipDebug` compile different source sets. Aggregating "per build type" would
 silently give one flavor the other's providers, so aggregation is per **variant**:
 
 - `freeDebug` gets its own scan tasks, its own manifest, and its own generated class.
 - The generated class is appended to that variant's `CLASSES` artifact, so packaging picks up
   the right one automatically.
-- `paidDebug` is completely independent.
+- `vipDebug` is completely independent.
 
-The demo in the repository has two flavors × two build types and a self-check screen that
-verifies all 12 invariants on a real device, including "debug-only provider exists only in
-debug builds" and "flavor-specific provider differs between free and paid".
+The DroidReel example in the repository has two flavors × two build types. Its profile screen
+shows the generated provider table on a device, including "the debug-only provider exists only in
+debug builds" and "the flavor-specific provider differs between free and vip".
 
 ## What about third-party `META-INF/services`?
 
 If a library already ships a JDK SPI descriptor, you do not need to fork it. Put the
 `META-INF/services/<interface FQN>` file under the module's source resources. The scanner picks
 it up and treats each entry like an annotation, except that entries map to the default key and
-require a public no-arg constructor. This is how `:modules:core-common` in the demo integrates
-a legacy provider.
+require a public no-arg constructor. This is how `modules/base`'s seeded media catalog integrates
+in the DroidReel example.
 
 ## Install and try it
 

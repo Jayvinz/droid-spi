@@ -219,21 +219,21 @@ the same path as annotation entries: module manifest → aggregation validation 
 `providerAt` / `newProviderAt`. Runtime behavior is identical.
 
 Prerequisite: the module must apply the `top.jayvin.droidspi` plugin (otherwise there is no
-`{variantName}ScanProviders` task). `modules/core-common` is the minimal example with SPI config only and
+`{variantName}ScanProviders` task). `modules/base` is the minimal example with SPI config only and
 no annotations — its manifest output is:
 
 ```
-com.example.core.api.LegacyService  com.example.core.common.LegacyServiceImpl
+com.example.droidreel.base.api.MediaCatalog  com.example.droidreel.base.media.BundledMediaCatalog
 ```
 
 ### 3.4 Manifests and aggregation
 
 Each module has one `ScanProvidersTask` per **variant** (`freeDebugScanProviders`,
-`paidReleaseScanProviders`, …), producing a deterministic manifest (sorted, no timestamps):
+`vipReleaseScanProviders`, …), producing a deterministic manifest (sorted, no timestamps):
 
 ```
-com.example.core.api.AccountService	com.example.feature.account.AccountServiceImpl		create
-com.example.core.api.AccountService	com.example.feature.account.GuestAccountServiceImpl	guest
+com.example.droidreel.base.api.AccountService	com.example.droidreel.account.LocalAccountService		create
+com.example.droidreel.base.api.FeedSource	com.example.droidreel.community.FollowingFeedSource	following
 ```
 
 Four columns: `service \t provider \t key \t factory` (an empty `key` means the default
@@ -455,7 +455,7 @@ On non-Play channels, dynamic delivery is handled by the host's own channel; pro
 packaged in the APK remain available.
 
 In the sample, `:app` depends on Play Feature Delivery and drives `SplitInstallManager`;
-`:modules:feature_camera` is the on-demand split.
+`:modules:production` is the on-demand split.
 
 ### 4.5 Public facade
 
@@ -513,7 +513,7 @@ declaration order instead.
 
 | Not provided | Reason |
 |---|---|
-| `loadOrInstall` / `awaitService` | Installation is asynchronous, so the first call cannot return an instance; mixing it in makes the return value ambiguous (downloading / unregistered / never available) and requires a cross-module wait queue. Business code composes it itself (see `MainActivity.openCamera` in the sample app) |
+| `loadOrInstall` / `awaitService` | Installation is asynchronous, so the first call cannot return an instance; mixing it in makes the return value ambiguous (downloading / unregistered / never available) and requires a cross-module wait queue. Business code composes it itself (see the probe → install → load sequence in `CommunityActivity.startCreate`) |
 | Annotation-level `singleton` | The cache key would be the provider's `Class`; after a split is uninstalled and reinstalled, the old instance prevents the old ClassLoader from being collected. Providers needing a cache can use `@ProviderFactory` to return a cached object |
 | `callMethod(key, args...)` | Purely string-based method lookup conflicts with "metadata via class literals" |
 | `getService(service, context)` | Dependencies come from the `@ProviderFactory` body, avoiding the "factory only takes effect on first use for singletons" pitfall |
@@ -554,7 +554,7 @@ Only the three together imply: **literals must live in method bodies, putting th
 Scope of "dynamic module support": the framework resolves providers that become visible after
 a split is installed, but it does not trigger, track, or force installation. The demo's `:app`
 owns Play Feature Delivery (`SplitInstallManager`) and any `SplitCompat` calls; `runtime` has
-no Play dependency, and `:modules:feature_camera` is the on-demand sample split.
+no Play dependency, and `:modules:production` is the on-demand sample split.
 
 WMRouter's `ServiceLoader.put()` is public static and can manually integrate dynamic modules,
 but its table stores `Class` literals and initializes once (`mHasInit`); once any `ldc` in
@@ -569,7 +569,7 @@ but its table stores `Class` literals and initializes once (`mHasInit`); once an
 |---|---|---|
 | Interfaces must live in base | If an interface literal in `services()` comes from a dynamic module, the whole table breaks | Convention + code review (no build-time ownership check yet) |
 | Wrong package when the interface is not imported | A wrong FQN is not exposed at build time | Fail the build when `import a.b.*` exists; otherwise require explicit imports |
-| Scan scope | Every variant's declared static sources are scanned (`src/main` + build-type / flavor overlays from `variant.sources`); generated source directories are skipped; `META-INF/services` is only recognized in source dirs, not dependency artifacts | Documented behavior; the demo's four-variant self-check covers it |
+| Scan scope | Every variant's declared static sources are scanned (`src/main` + build-type / flavor overlays from `variant.sources`); generated source directories are skipped; `META-INF/services` is only recognized in source dirs, not dependency artifacts | Documented behavior; the example's four-variant matrix covers it |
 | `@ProviderFactory` signature unchecked | Argument count and return type are not validated; a mismatch produces a descriptor that fails at runtime | Keep factories no-arg and returning the enclosing type; violations surface as `NoSuchMethodError` when the provider is first loaded |
 | Per-variant aggregation | A module variant is aggregated only when its build type matches and all of its flavor dimensions match the app variant; a dependency with a dimension the app does not declare is skipped (as AGP would) | Documented behavior; dynamic features must declare the base module's flavor dimensions |
 | Nested classes / `typealias` unsupported | The scanner resolves top-level types | Documented limitation; declare services as top-level interfaces |
@@ -585,19 +585,20 @@ but its table stores `Class` literals and initializes once (`mHasInit`); once an
 |---|---|
 | Toolchain compile | `./gradlew :plugin:compileKotlin` ✅ |
 | Runtime unit tests | `./gradlew :runtime:testDebugUnitTest` → 9 passed on the JVM (registry behavior + facade never-throws / degradation tests) |
-| Sample APK | `:app:assembleFreeDebug` ✅; manifest confirms the Application; the configuration class is generated by `FreeDebugScanProviders` / `FreeDebugGenerateServiceConfiguration` and packed into the base dex |
-| Sample AAB | `:app:bundleFreeDebug` ✅, `base` / `feature_camera` splits |
-| Variant matrix | All four of `assembleFreeDebug` / `assemblePaidDebug` / `assembleFreeRelease` / `assemblePaidRelease` ✅ (also from `clean`); `javap` + `dexdump` show each APK contains only its flavor's `ChannelServiceImpl`, debug APKs additionally contain `DebugServiceImpl`, release APKs do not |
-| On-device UI test | All four APKs installed side by side on a Xiaomi M2012K11C (Android 13); every self-check screen reports `SELF-CHECK PASS 12/12`; screenshots in `build/ui-test/`; tapping "Re-run checks" and "Camera module" does not crash (split install fails gracefully with error -14 on a sideloaded APK) |
+| Sample APK | `:app:assembleFreeDebug` ✅ (DroidReel example); the configuration class is generated by `FreeDebugScanProviders` / `FreeDebugGenerateServiceConfiguration` and packed into the base dex |
+| Sample AAB | `:app:bundleFreeDebug` ✅, `base` / `production` splits |
+| Variant matrix | All four of `assembleFreeDebug` / `assembleVipDebug` / `assembleFreeRelease` / `assembleVipRelease` ✅; `javap` shows each build contains only its flavor's `ChannelServiceImpl`, debug builds additionally contain `DebugInfoServiceImpl`, release builds do not |
+| On-device UI test | All four APKs installed side by side on a Xiaomi M2012K11C (Android 13); Profile → **SPI status** reports 11 entries in both debug builds and 10 in both release builds, `Channel = free` / `vip` matching the installed flavor, `DemoInfo(debug key)` present only in debug, and `ProductionEntry` MISSING. freeDebug also verified login (`demo` / `123456`), the `"following"` feed after login, and Create failing gracefully with error -14 on a sideloaded APK. Screenshots are in `build/ui-test/` |
+| Dynamic install | With a `bundletool --local-testing` install of `:app:bundleFreeDebug`, tapping Create downloaded and installed the `production` split, the hub opened without an app restart, and Profile → **SPI status** then showed `ProductionEntry` READY (`load=instance`); publishing called the resident `FeedPublisher` and the work appeared in the profile (2 works) |
 | Incremental build | A second `:app:assembleFreeDebug` leaves all `ScanProviders` / `GenerateServiceConfiguration` tasks UP-TO-DATE, confirming the cacheable task wiring |
 | Incremental rebuild | Adding/removing a provider reruns only that module's scan + generate (and downstream packaging); the other modules' scans stay UP-TO-DATE, and reverting restores the tasks FROM-CACHE |
 | Build cache | `clean` rebuild restores every scan + generate task FROM-CACHE; a byte-identical copy of the project at another absolute path also restores them, confirming the RELATIVE input path sensitivity and deterministic outputs |
 | Configuration cache | Store + reuse verified; source changes under `--configuration-cache` still rerun scan/generate; all four variants build in one invocation; `:app:bundleFreeDebug` succeeds |
-| Isolated projects | `-Dorg.gradle.unsafe.isolated-projects=true` passes store/reuse, added/removed providers, all four variants, and AAB builds under the same configuration cache |
+| Isolated projects | `-Dorg.gradle.unsafe.isolated-projects=true` store/reuse verified for `:app:assembleFreeDebug` |
 | Dynamic feature without plugin | Removing the plugin from a `dynamicFeatures` project still builds (standard and isolated modes); the table simply contains no provider from that feature, and restoring the plugin adds it back |
-| Generated bytecode | `javap -c` confirms: **no `<clinit>`**, `providerAt` only uses `ldc`, `newProviderAt` uses `INVOKESTATIC` for `@ProviderFactory`; `services()` / `keys()` are index-aligned (8 entries in debug, 7 in release) |
-| Split correctness | `dexdump` confirms `CameraServiceImpl` only exists in `feature_camera/dex`; base dex only has references |
-| Standard SPI config | `modules/core-common`'s `META-INF/services/...LegacyService` is scanned into the manifest (`LegacyService → LegacyServiceImpl`); generated bytecode contains `ldc LegacyServiceImpl` and `new LegacyServiceImpl`; `MainActivity` calls `ServiceLoader.load(LegacyService::class.java)` and gets a non-null instance |
+| Generated bytecode | `javap -c` confirms: **no `<clinit>`**, `providerAt` only uses `ldc`, `newProviderAt` uses `INVOKESTATIC` for `@ProviderFactory`; `services()` / `keys()` are index-aligned (11 entries in debug, 10 in release) |
+| Split correctness | The AAB contains a `production/dex`; the base table references `ProductionEntryImpl` only through `ldc`, and the class lives only in the split |
+| Standard SPI config | `modules/base`'s `META-INF/services/...MediaCatalog` is scanned into the manifest (`MediaCatalog → BundledMediaCatalog`); generated bytecode contains `ldc BundledMediaCatalog` and `new BundledMediaCatalog`; the repository loads it through `ServiceLoader.load(MediaCatalog::class.java)` |
 
 ### 8.1 Full regression matrix (run after major plugin changes)
 
@@ -613,14 +614,14 @@ standalone fixtures in `compat/agp8/` (8.7.3) and `compat/agp80/` (8.0.2).
    ```
 2. **Clean build of all variants** (also verifies the AAB)
    ```bash
-   ./gradlew clean :app:assembleFreeDebug :app:assemblePaidDebug :app:assembleFreeRelease :app:assemblePaidRelease
+   ./gradlew clean :app:assembleFreeDebug :app:assembleVipDebug :app:assembleFreeRelease :app:assembleVipRelease
    ./gradlew :app:bundleFreeDebug
    ```
 3. **Generated classes, per variant** (`javap -p -c`): only the flavor's `ChannelServiceImpl`;
-   `DebugServiceImpl` present in debug and absent in release; `services()` and `keys()` lengths
-   equal (8 debug / 7 release); no `<clinit>`.
-4. **APK/AAB content** (`dexdump`): `CameraServiceImpl` exists only in the feature split, and no
-   `services.txt` artifact leaks into any APK/AAB.
+   `DebugInfoServiceImpl` present in debug and absent in release; `services()` and `keys()` lengths
+   equal (11 debug / 10 release); no `<clinit>`.
+4. **APK/AAB content**: `production/dex` exists in the AAB, `ProductionEntryImpl` exists only in
+   the split, and no `services.txt` artifact leaks into any APK/AAB.
 5. **Incremental**: add a temporary `@ServiceProvider` to one module, build, and confirm only
    that module's scan + generate rerun; remove it and confirm FROM-CACHE plus a reverted class.
 6. **Build cache**: a `clean` rebuild restores every scan + generate FROM-CACHE; a byte-identical
@@ -632,11 +633,17 @@ standalone fixtures in `compat/agp8/` (8.7.3) and `compat/agp80/` (8.0.2).
    `-Dorg.gradle.unsafe.isolated-projects=true` (Gradle 9.7+ uses `--isolated-projects`).
 9. **Dynamic feature tolerance**: remove the plugin from a `dynamicFeatures` project; the build
    must still succeed and that feature must contribute 0 providers; restore it.
-10. **On-device matrix**: install all four APKs, launch each, verify `SELF-CHECK PASS 12/12` and
-    the variant-specific values (flavor provider, build-type isolation, entry counts); tap
-    "Re-run checks" and "Camera module" (graceful error -14 on a sideloaded APK); keep the
-    screenshots under `build/ui-test/` and confirm no `AndroidRuntime` errors.
+10. **On-device matrix**: install all four APKs, launch each, and read Profile → **SPI status**
+    (entry counts 11 debug / 10 release, flavor provider, build-type isolation, and
+    `ProductionEntry` MISSING before install); tap Create (graceful error -14 on a sideloaded
+    APK); keep the screenshots under `build/ui-test/` and confirm no `AndroidRuntime` errors.
+11. **Dynamic install**: build the AAB and install it with bundletool `--local-testing`; log in,
+    tap Create, and confirm that the split installs, the hub opens without a restart, SPI status
+    shows `ProductionEntry` READY, and publishing adds the work to the feed and profile.
 
-Known gap: the `MISSING → READY` transition after a real Play dynamic install cannot be exercised
-with a sideloaded APK; the runtime unit tests cover the equivalent state change with a fake
-`ProviderConfiguration`.
+The `MISSING → READY` transition was exercised end to end with a bundletool local-testing build
+of `:app:bundleFreeDebug`: Create triggered the Play Core install, the split became visible to the
+running process, `ProductionEntry` changed from MISSING to READY without an app restart, and
+publishing through `FeedPublisher` added the work to the community repository. A real
+Play-delivery install from an internal test track is still not exercised here; the runtime unit
+tests additionally cover the same state change with a fake `ProviderConfiguration`.

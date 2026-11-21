@@ -17,7 +17,7 @@
 对每个 Android 模块和每个变体，插件都注册一个 `{variant}ScanProviders` 任务。它的输入是该变体
 声明的源码目录，来自 `variant.sources`（`java.static`、`kotlin.static`，以及启用
 `META-INF/services` 扫描时的 `resources.static`）。这个细节很重要：直接使用 `src/main` 会漏掉
-`src/debug`、`src/free`、`src/paid` 以及其他所有覆盖层。
+`src/debug`、`src/free`、`src/vip` 以及其他所有覆盖层。
 
 扫描器刻意没有做成 AST 解析器。它先剥离注释、屏蔽字符串内容，然后匹配注解，并通过括号深度找到
 注解所在的类。这样插件就不依赖 Kotlin 编译器内部结构，并且对 Java 和 Kotlin 源码的行为完全一致。
@@ -122,7 +122,7 @@ error 并替换为空配置。这是有意的 API 决策：服务发现层不应
 - 增量添加/移除一个 `@ServiceProvider`；
 - 项目目录重定位后的构建缓存命中；
 - 配置缓存的存储与复用，启用和不启用隔离项目各一次；
-- 每个变体的真机自检。
+- 每个变体的真机 SPI 状态检查。
 
 最后一项不是装饰：它是唯一能发现"某个变体的生成类从未被追加"的手段，因为构建依然成功，而运行时
 `ServiceConfiguration` 缺失。

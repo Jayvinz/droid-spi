@@ -1,16 +1,15 @@
 plugins {
     id("com.android.application")
     id("top.jayvin.droidspi")
+    id("org.jetbrains.kotlin.plugin.compose")
 }
 
-val spiVersion = providers.gradleProperty("spiVersion").get()
-
 android {
-    namespace = "com.example.demo"
+    namespace = "com.example.droidreel"
     compileSdk = 35
 
     defaultConfig {
-        applicationId = "com.example.demo"
+        applicationId = "com.example.droidreel"
         minSdk = 24
         targetSdk = 35
         versionCode = 1
@@ -18,7 +17,8 @@ android {
     }
 
     buildFeatures {
-        // The self-check screen reads BUILD_TYPE / FLAVOR / DEBUG from BuildConfig.
+        compose = true
+        // The debug provider reads BUILD_TYPE / VERSION_NAME from BuildConfig.
         buildConfig = true
     }
 
@@ -30,13 +30,13 @@ android {
             dimension = "channel"
             applicationIdSuffix = ".free"
         }
-        create("paid") {
+        create("vip") {
             dimension = "channel"
-            applicationIdSuffix = ".paid"
+            applicationIdSuffix = ".vip"
         }
     }
 
-    dynamicFeatures += setOf(":modules:feature_camera")
+    dynamicFeatures += setOf(":modules:production")
 
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -49,26 +49,19 @@ android {
             applicationIdSuffix = ".debug"
         }
         release {
-            // Signed with the debug key so the demo release variants can be installed and
-            // exercised on a device; this is a demo app, never shipped.
+            // Signed with the debug key so demo release variants can be installed and exercised
+            // on a device; this is a demo app, never shipped.
             signingConfig = signingConfigs.getByName("debug")
             isMinifyEnabled = false
-            proguardFiles(
-                getDefaultProguardFile("proguard-android-optimize.txt"),
-                "proguard-rules.pro",
-            )
         }
     }
 }
 
 dependencies {
-    implementation(project(":modules:core-api"))
-    implementation(project(":modules:core-common"))
-    implementation(project(":modules:feature-home"))
-    implementation(project(":modules:feature-account"))
+    implementation(project(":modules:base"))
+    implementation(project(":modules:account"))
+    implementation(project(":modules:community"))
 
-    implementation("top.jayvin.droidspi:annotation:$spiVersion")
-    implementation("top.jayvin.droidspi:runtime:$spiVersion")
-    // The demo owns dynamic-module installation and visibility.
+    // The app owns dynamic delivery; no other module depends on Play Core.
     implementation("com.google.android.play:feature-delivery:2.1.0")
 }
