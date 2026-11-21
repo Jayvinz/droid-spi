@@ -2,6 +2,26 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Project focus (read first)
+
+The product of this repository is the **framework**, and its core is the **Gradle plugin**
+(`plugin/`) plus **`runtime/`** (with `annotation/` as the API they depend on). Those three are
+the published artifacts (`top.jayvin.droidspi:*`); `configuration-stub/` and `buildSrc/` are
+supporting build infrastructure, not product code.
+
+Every other module is an **integration example that exercises the plugin**, not a deliverable of
+its own: `app/` (demo application), `modules/**` (demo service interfaces and provider modules),
+and `compat/**` (AGP / Gradle compatibility fixtures). Judge changes accordingly:
+
+- Framework behavior belongs in `plugin/`, `runtime/` or `annotation/`. A defect observed in a
+  demo module is still fixed in the framework, not patched in the demo.
+- Demo edits exist only to exercise or demonstrate framework behavior. Keep them minimal; do not
+  grow the demo's UI, feature set or dependencies as part of framework work.
+- Do not restructure the repository (rename / move / remove modules, split the demo out, add
+  new modules) unless the task explicitly asks for it.
+- Use the demo and `compat/` fixtures to verify framework changes (see
+  "Verification checklist"); they are the test harness, not the target.
+
 ## Language
 
 Prefer English for all code comments, KDoc/Javadoc, README and design documents, and
