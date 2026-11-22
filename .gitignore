@@ -21,5 +21,8 @@ local-repo/
 .DS_Store
 Thumbs.db
 
+# Local assistant workspace data
+.workbuddy/
+
 # Logs
 *.log
