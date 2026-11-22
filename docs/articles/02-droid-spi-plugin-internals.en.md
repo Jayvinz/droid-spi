@@ -1,14 +1,14 @@
-# Why Droid-spi's Generated Classes Have No Static Initializers
+# How droid-spi Achieves Cross-Module Calls Without Reflection or KSP
 
-*For developers who want to write their own build plugins: how Droid-spi's three-stage pipeline works (source scanning, manifest passing, bytecode generation), and the three JVM semantics that decide whether the whole thing holds together. The code fits in an afternoon. The hard part is knowing which "obviously correct" implementations are quietly wrong.*
+*For developers who want to write their own build plugins: how droid-spi's three-stage pipeline works (source scanning, manifest passing, bytecode generation), and the three JVM semantics that decide whether the whole thing holds together. The code fits in an afternoon. What costs time is knowing which "obviously correct" implementations quietly fail.*
 
 ---
 
-Last post got Droid-spi working. This one explains why it's built the way it is.
+Last post got droid-spi working. This one explains why it's built the way it is.
 
-Set yourself a target first. You want a Gradle plugin that moves the service registry from run time to compile time: each module scans its own `@ServiceProvider` annotations, the app aggregates one provider table, and the runtime looks up and constructs providers with zero reflection. It sounds like a "scan and generate code" job, an afternoon of work.
+Set yourself a target first. You want a Gradle plugin that moves the service registry from run time to compile time: each module scans its own `@ServiceProvider` annotations, the app aggregates one provider table, and the runtime looks up and constructs providers with zero reflection. It sounds like a simple "scan and generate code" job.
 
-The code is an afternoon of work. But four traps hide in it, and each one makes your first version work perfectly in hot builds and then fail silently in some stricter environment:
+The code is small. But four traps hide in it, and each one makes your first version work perfectly in hot builds and then fail silently in some stricter environment:
 
 1. Parsing source with an AST or compiler API ties you to compiler internals that move between versions.
 2. Collecting manifests through a shared build service breaks the task graph when configuration cache reuse kicks in.
@@ -17,7 +17,7 @@ The code is an afternoon of work. But four traps hide in it, and each one makes 
 
 Below I walk the pipeline in order. When you're done, you should be able to judge for yourself which decisions must be right if you write a compile-time registry plugin of your own.
 
-**Note**: The implementation lives in three modules of [Jayvinz/droid-spi](https://github.com/Jayvinz/droid-spi): `plugin/`, `runtime/`, and `configuration-stub/`. About a thousand lines total. You really can read it in an afternoon.
+**Note**: The implementation lives in three modules of [Jayvinz/droid-spi](https://github.com/Jayvinz/droid-spi): `plugin/`, `runtime/`, and `configuration-stub/`. About 1,700 lines of main source across the three modules, which you can read in an afternoon.
 
 ## The pipeline at a glance
 
@@ -33,7 +33,7 @@ Why not scan third-party jars? Because that means unpacking and repacking hundre
 
 ## Stage one: the scanner is lexical, not AST
 
-For every variant of every module, register a `ScanProviders` task whose inputs come from AGP's `variant.sources` (`java.static`, `kotlin.static`, `resources.static`). **This detail matters**: scanning `src/main` directly misses `src/debug`, `src/free`, and every other overlay. Variant awareness has to start at the input side.
+For every variant of every module, register a `{variant}ScanProviders` task (for example, `freeDebugScanProviders`) whose inputs come from AGP's `variant.sources` (`java.static`, `kotlin.static`, `resources.static`). **This detail matters**: scanning `src/main` directly misses `src/debug`, `src/free`, and every other overlay. Variant awareness has to start at the input side.
 
 Source parsing is deliberately not an AST. Two passes, both preserving character offsets:
 
@@ -84,7 +84,7 @@ interface ProviderConfiguration {
 
 ### Rule 1: never generate a `<clinit>`
 
-This is the invariant the whole project rests on, and the reason for the title.
+This is the invariant the whole design rests on.
 
 The naive generator writes the table as a static array:
 
@@ -92,7 +92,7 @@ The naive generator writes the table as a static array:
 static final Class<?>[] SERVICES = { HomeServiceImpl.class, CameraServiceImpl.class, ... };
 ```
 
-Looks completely reasonable. But suppose `CameraServiceImpl` lives in a dynamic module that isn't installed: resolving that literal **during class initialization** throws `NoClassDefFoundError`, and the JVM marks `ServiceConfiguration` as *erroneous* for the rest of the process. Permanently, irreversibly. Installing the module later doesn't help; every access is `Could not initialize class` and **the whole table is dead**.
+Looks completely reasonable. But suppose `CameraServiceImpl` lives in a dynamic module that isn't installed: resolving that literal **during class initialization** throws `NoClassDefFoundError`, and the JVM marks `ServiceConfiguration` as *erroneous* for the rest of the process. Installing the module later doesn't help; every access is `Could not initialize class` and **the whole table is dead**.
 
 ![Figure 2. Where the class literal lives decides whether the table survives](assets/fig4-clinit-vs-ldc.png)
 
@@ -138,7 +138,7 @@ The registry (`ProviderRegistry`) translates the semantics above into states cal
 | `READY` | resolvable and instantiable | construction succeeds | no (instances aren't cached either) |
 | `DEAD` | unavailable and retrying is pointless | `<clinit>` fails | **yes**, never tried again in this process |
 
-`load()` walks matching entries, calls `newProviderAt()` directly, skips `MISSING` and `DEAD`, and returns the first success. The facade is deliberately total: if the generated class is missing it logs one error and degrades to an empty configuration, so every query returns `null` or an empty collection. A service discovery layer shouldn't crash the app because one module isn't installed.
+`load()` tries each matching entry through `newProviderAt()`: an absent class yields `null`, and an entry whose `<clinit>` failed is marked `DEAD` and skipped from then on. It returns the first success. The facade is deliberately total: if the generated class is missing it logs one error and degrades to an empty configuration, so every query returns `null` or an empty collection. A service discovery layer shouldn't crash the app because one module isn't installed.
 
 > **A lesson for plugin authors**: Distinguish "failed temporarily" from "failed permanently", and cache only the second kind. That requires your generated output to separate resolution from instantiation (`providerAt` vs `newProviderAt`). The API shape serves recoverability.
 
@@ -147,7 +147,7 @@ The registry (`ProviderRegistry`) translates the semantics above into states cal
 The plugin emits bytecode, and wrong bytecode doesn't fail compilation, so verification has to be deliberate:
 
 - Determinism: sorted manifests, no timestamps. Both tasks `@CacheableTask`, source inputs `PathSensitivity.RELATIVE`. Copy the project byte-for-byte to another absolute path and the build cache must still hit.
-- Incremental builds: adding or removing one `@ServiceProvider` reruns only that module's scan + generate; reverting is FROM-CACHE.
+- Incremental builds: adding or removing one `@ServiceProvider` reruns that module's scan and the app's generate; reverting is FROM-CACHE.
 - Configuration cache and isolated projects: store, reuse, edit sources while reusing, build again.
 - Variant matrix: `javap` the generated class per variant and confirm it contains only that variant's providers and no `<clinit>`.
 - On-device end to end: the `MISSING → READY` transition (dynamic module installed, no process restart) only counts when it actually runs. Builds "succeed" either way and won't tell you the generated class was never appended in some variant.
@@ -157,18 +157,19 @@ The plugin emits bytecode, and wrong bytecode doesn't fail compilation, so verif
 Compressed into a checklist:
 
 1. **Be variant-aware at the input side**. Use `variant.sources`, never `src/main`.
-2. **Lexical scanning beats AST**, unless you want to marry compiler internals.
+2. **Lexical scanning beats AST** unless you're willing to track compiler internals across versions.
 3. **Cross-project manifests are typed artifacts**. Shared services break silently under configuration cache.
 4. **No `<clinit>` in generated classes**. Class literals go in method bodies, or one missing class poisons the whole table.
 5. **Separate resolution from initialization**. Cache irreversible failures (`DEAD`) only; recoverable ones (`MISSING`) are never cached.
-6. **Zero reflection is free**. `ldc`/`new`/`INVOKESTATIC` also solve R8 visibility and obfuscation as a side effect.
+6. **Zero reflection also buys R8 visibility**. `ldc` / `new` / `INVOKESTATIC` keep providers visible to the shrinker without keep rules.
 7. **The verification matrix is part of the plugin**: deterministic output, cache hits, configuration cache reuse, on-device state checks.
 
-The implementation is deliberately "readable in an afternoon": one scanner, one ASM writer, one registry, one facade. Most of the real work is finding which Gradle and JVM assumptions don't survive dynamic delivery and configuration cache. If you build plugins for a living, that sentence probably sounds familiar.
+The implementation stays deliberately small: one scanner, one ASM writer, one registry, one facade. Most of the real work is finding which Gradle and JVM assumptions don't survive dynamic delivery and configuration cache. If you build plugins for a living, that sentence probably sounds familiar.
 
 ---
 
 Trade-offs, for the record: compile-time only (providers must be visible to the build), explicit keys must be unique, service interfaces live in base modules, and there's no scoping, lifetime, or constructor injection. For a dependency graph that's closed at compile time, use Hilt or Dagger. This framework serves the part of the graph that is *not guaranteed* to exist in the process.
 
 Repository and design doc: [github.com/Jayvinz/droid-spi](https://github.com/Jayvinz/droid-spi) · `docs/droid-spi-design.md`
-Previous post: *No Reflection, No KSP: Getting Started with Droid-spi*
+Code snippets in this post are covered by the repository's [Apache-2.0 license](../../LICENSE).
+Previous post: *Getting Started with Cross-Module Calls in droid-spi*

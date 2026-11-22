@@ -1,7 +1,7 @@
-# Droid-spi · 设计方案
+# droid-spi · 设计方案
 
 > 面向 AAB 多模块工程的**编译期 provider 配置表**。命名对齐 `java.util.ServiceLoader` 的 SPI 词汇。
-> 实现代码位于 `Droid-spi` 仓库（`app/` + `modules/` 为 demo，
+> 实现代码位于 `droid-spi` 仓库（`app/` + `modules/` 为 demo，
 > `annotation` / `runtime` / `plugin` 为框架本体，单一 build）。
 > 核心特征：**零反射——从不使用 `Class.forName`，provider 通过直接 `new` / `INVOKESTATIC`
 > 构造，不使用任何反射构造函数或反射方法调用；零 APT/KSP；零第三方 jar 扫描；元数据以类字面量

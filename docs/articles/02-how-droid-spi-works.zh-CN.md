@@ -1,11 +1,11 @@
-# Droid-spi 的内部实现：artifact 传输、ASM 与 JVM 类初始化
+# droid-spi 的内部实现：artifact 传输、ASM 与 JVM 类初始化
 
 *深入 Android 编译期 SPI 背后的流水线：为什么清单要以 Gradle artifact 的形式传输，为什么生成的类
 不能有静态初始化块，以及配置缓存和隔离项目如何塑造了这套设计。*
 
 ---
 
-[第一篇](01-introducing-droid-spi.zh-CN.md)介绍了 `Droid-spi` 能做什么。这一篇讲它是怎么实现的，
+[第一篇](01-introducing-droid-spi.zh-CN.md)介绍了 `droid-spi` 能做什么。这一篇讲它是怎么实现的，
 以及为什么好几种看似显然的实现方式其实是错的。
 
 项目包含三个模块：`annotation`（两个纯 Java 注解）、`runtime`（`ServiceLoader` 门面与
@@ -134,7 +134,7 @@ error 并替换为空配置。这是有意的 API 决策：服务发现层不应
   有多个：`load()` 返回第一个可用的，`providers()` 枚举全部。
 - **接口必须位于 base。** 如果把 service 接口放在动态模块里，安装前整张表都无法解析。
 - **描述性，而非魔法。** 没有作用域、生命周期或构造函数注入。如果你的依赖图在构建期就已全部安装，
-  请使用 Hilt 或 Dagger。`Droid-spi` 服务于依赖图中*不保证*存在于进程内的那部分。
+  请使用 Hilt 或 Dagger。`droid-spi` 服务于依赖图中*不保证*存在于进程内的那部分。
 
 实现刻意做到一个下午就能读完：一个扫描器、一个 ASM writer、一个注册表和一个门面。困难的部分不是
 代码，而是找出哪些 Gradle 与 JVM 的假设无法在动态下发和配置缓存下成立。

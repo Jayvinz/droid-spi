@@ -1,4 +1,4 @@
-# No Reflection, No KSP: Getting Started with Droid-spi
+# Getting Started with Cross-Module Calls in droid-spi
 
 *A compile-time service discovery framework for Android: the service interface is the contract between modules, any module can provide an implementation, and one `load()` gets you the instance at runtime. Zero reflection, zero annotation processing, and it works with on-demand dynamic feature modules.*
 
@@ -16,9 +16,9 @@ The dependency arrow points the wrong way. Worse, A may not even be in the proce
 
 ![Figure 1. The dependency wall: B needs A's capability, but B may not depend on A, and A may not be installed yet](assets/fig1-dependency-wall.png)
 
-Droid-spi takes a different route: it keeps the calling shape of the JDK's `ServiceLoader` and moves the provider table to build time. In this post you'll wire it into a project and walk through three everyday scenarios. Once you've seen them, a lot of the wiring and registration code you used to write simply has no reason to exist.
+droid-spi takes a different route: it keeps the calling shape of the JDK's `ServiceLoader` and moves the provider table to build time. In this post you'll wire it into a project and walk through three everyday scenarios. Once you've seen them, the wiring and registration code you used to write goes away.
 
-![Figure 2. With Droid-spi: only the contract at compile time, table lookup at runtime](assets/fig2-droid-spi-architecture.png)
+![Figure 2. With droid-spi: only the contract at compile time, table lookup at runtime](assets/fig2-droid-spi-architecture.png)
 
 **Note**: This post is based on `1.0.0-alpha02`. Requirements: JDK 17, AGP 8.0–8.13 or 9.x, `minSdk 24`.
 
@@ -106,12 +106,12 @@ class FollowingFeedSource : FeedSource {
 ```kotlin
 val recommend = ServiceLoader.load<FeedSource>()             // default implementation
 val following = ServiceLoader.load<FeedSource>("following")  // a specific key
-val all       = ServiceLoader.loadAll<FeedSource>()          // key -> instance map
+val all       = ServiceLoader.loadAll(FeedSource::class.java)   // key -> instance map
 ```
 
-The rules are simple. A non-empty `key` must be unique, and two implementations fighting over the same key fail the build, which is what you want. An empty key is the default slot and can have multiple implementations; `load()` returns the first available one in a deterministic order that doesn't depend on your module layout.
+The rules are simple. A non-empty `key` must be unique, and two implementations fighting over the same key fail the build, which is what you want. An empty key is the default slot and can have multiple implementations; `load()` returns the first available one in a deterministic order that doesn't depend on your module layout. If the default slot has nothing and exactly one other key is available, `load()` falls back to it.
 
-## Can't call new? Use @ProviderFactory
+## Can't call `new`? Use `@ProviderFactory`
 
 The generated table instantiates providers with `new Impl()` by default. Sometimes your implementation has a private constructor, or needs a parameter from its own dependency graph, like an account service that needs the login state:
 
@@ -140,7 +140,7 @@ The framework calls this factory on every `load()` and caches no instances, so i
 
 ## Providers that don't exist yet
 
-This is where the framework earns its keep with App Bundles.
+This is the App Bundle case that motivates the design.
 
 Imagine a creation screen living in an on-demand dynamic feature module. The base module can't compile against `ProductionEntryImpl`, because that class isn't in the process until the user installs the split. The traditional approach needs an install listener and a manual registry refresh. Here there's nothing to wire:
 
@@ -167,7 +167,7 @@ fun onCreateClick(context: Context) {
 }
 ```
 
-Before installation, `load()` returns `null` (and `stateOf()` tells you it's `MISSING`). After the split lands, the next `load()` returns the instance. No install listener, no `refresh()` call, no window where the table is stale. The caller doesn't even know that `ProductionHubActivity` exists.
+Before installation, `load()` returns `null` (and `stateOf()` tells you it's `MISSING`). After the split lands, the next `load()` returns the instance. There is no install listener or `refresh()` call, and the table never goes stale. The caller doesn't even know that `ProductionHubActivity` exists.
 
 ## Flavors and build types wire themselves
 
@@ -186,7 +186,7 @@ No `if (BuildConfig.DEBUG)` sprinkled through half the app, no flavor-specific i
 | Hand-rolled registry | none | hand-written | install callback + manual refresh | none |
 | JDK `ServiceLoader` / AutoService | reflective construction | no | throws `ServiceConfigurationError` | AutoService runs APT |
 | DI (Hilt / Koin) | none | multibinding | outside the compile-time graph | Hilt runs KSP/KAPT |
-| **Droid-spi** | **none** | **`key`, table per variant** | **available on the next `load()`** | **one scan, no APT** |
+| **droid-spi** | **none** | **`key`, table per variant** | **available on the next `load()`** | **one scan, no APT** |
 
 A few details you'll appreciate daily:
 
@@ -197,13 +197,13 @@ A few details you'll appreciate daily:
 
 ## When not to use it
 
-Honest limits are more useful than a feature list:
+Where it doesn't fit:
 
 - If your dependency graph is fully closed at compile time and everything is always resident, use Hilt or Dagger. They bring scoping, lifetimes, and constructor injection, which this framework doesn't try to provide.
 - If you need to load arbitrary plugin classes from disk at runtime, look elsewhere. This is a compile-time table; every provider must be visible to the build.
 - The service interface must live in a base or always-resident module. Nested classes and `typealias` aren't supported.
 
-The gap it fills is one sentence wide: discovering a provider that may not be in the process yet. Dynamic feature modules, large modular apps, implementations that vary by variant.
+It fills one gap: discovering a provider that may not be in the process yet, whether it lives in a dynamic feature module, a large modular app, or a variant-specific source set.
 
 ## Getting started checklist
 
@@ -216,4 +216,6 @@ The plugin is on the Gradle Plugin Portal and the libraries are on Maven Central
 
 👉 [github.com/Jayvinz/droid-spi](https://github.com/Jayvinz/droid-spi)
 
-Curious why it's built this way, how the scanner works, and why the generated classes deliberately avoid static initializers? That's the next post: *Why Droid-spi's Generated Classes Have No Static Initializers*.
+Code snippets in this post are covered by the repository's [Apache-2.0 license](../../LICENSE).
+
+Curious how the plugin pulls this off without reflection or KSP? That's the next post: *How droid-spi Achieves Cross-Module Calls Without Reflection or KSP*.

@@ -1,6 +1,6 @@
 # DroidReel example
 
-`app/` and `modules/` form **DroidReel**, the integration example that ships with Droid-spi. It is
+`app/` and `modules/` form **DroidReel**, the integration example that ships with droid-spi. It is
 a small Compose short-video app whose modules stay dependency-isolated: the app compiles only
 against the contract interfaces in `modules/base`, and the build-time provider table connects the
 callers to implementations they never import.

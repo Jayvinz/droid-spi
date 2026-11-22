@@ -1,4 +1,4 @@
-# 跨模块调用不用反射，也不用 KSP：Droid-spi 上手指南
+# 跨模块调用：droid-spi 上手指南
 
 *一个编译期的服务发现框架：把 service 接口当模块间契约，任意模块提供实现，运行时一句 `load()` 拿到实例——零反射、零注解处理，连按需下发的动态功能模块都能用。*
 
@@ -16,9 +16,9 @@
 
 ![图 1 · 依赖墙：B 需要 A 的能力，却不允许依赖 A，而 A 可能还没装](assets/fig1-dependency-wall.png)
 
-`Droid-spi` 走了另一条路：沿用 JDK `ServiceLoader` 的调用形状，把 provider 表**前移到构建期**。这篇文章带你把它接进工程，并用三个典型场景走一遍。读完你会发现，很多以前要接线、要注册、要写分支的东西，现在不存在了。
+`droid-spi` 走了另一条路：沿用 JDK `ServiceLoader` 的调用形状，把 provider 表**前移到构建期**。这篇文章带你把它接进工程，并用三个典型场景走一遍。读完你会发现，以前要接线、要注册的代码都不用了。
 
-![图 2 · 接入 Droid-spi 后：编译期只依赖 contract，运行时查表拿实例](assets/fig2-droid-spi-architecture.png)
+![图 2 · 接入 droid-spi 后：编译期只依赖 contract，运行时查表拿实例](assets/fig2-droid-spi-architecture.png)
 
 **Note**：本文基于 `1.0.0-alpha02`。需要 JDK 17、AGP 8.0–8.13 或 9.x、`minSdk 24`。
 
@@ -105,12 +105,12 @@ class FollowingFeedSource : FeedSource {
 ```kotlin
 val recommend = ServiceLoader.load<FeedSource>()             // 默认实现
 val following = ServiceLoader.load<FeedSource>("following")  // 指定 key
-val all       = ServiceLoader.loadAll<FeedSource>()          // key -> 实例 的 map
+val all       = ServiceLoader.loadAll(FeedSource::class.java)   // key -> 实例 的 map
 ```
 
-规则很简单：**非空 key 必须唯一**，两个实现抢同一个 key 会直接构建失败（这正是你想要的）；空 key 是默认实现，可以有多个——`load()` 返回第一个可用的，顺序确定且与模块布局无关。
+规则很简单：**非空 key 必须唯一**，两个实现抢同一个 key 会直接构建失败（这正是你想要的）；空 key 是默认实现，可以有多个——`load()` 返回第一个可用的，顺序确定且与模块布局无关。默认槽位没有可用实现、且恰好只剩一个带 key 的实现时，`load()` 会退而取它。
 
-## 构造不走 `new`？用 @ProviderFactory
+## 构造不走 `new`？用 `@ProviderFactory`
 
 生成表默认用 `new Impl()` 实例化。但你的实现可能构造函数是 private 的，或者需要从自己的依赖图里拿参数——比如账户服务要拿登录态：
 
@@ -136,7 +136,7 @@ class AccountServiceImpl private constructor(
 
 **Note**：工厂必须是 `static`、无参、返回实现类自身。"静态 + 唯一"两条在构建期校验；无参和返回类型签名没有构建期校验，写错会在首次加载时以 `NoSuchMethodError` 暴露——保持签名干净就好。
 
-## 杀手锏：provider 可以"还不存在"
+## provider 可以"还不存在"
 
 这是它对 App Bundle 真正有用的地方。
 
@@ -165,7 +165,7 @@ fun onCreateClick(context: Context) {
 }
 ```
 
-安装前 `load()` 返回 `null`（`stateOf()` 会告诉你它是 `MISSING`）；split 装好后，**下一次 `load()` 就直接返回实例**。没有安装监听器，没有 `refresh()` 调用，没有"表没更新"的窗口。调用方甚至不知道 `ProductionHubActivity` 这个类名的存在。
+安装前 `load()` 返回 `null`（`stateOf()` 会告诉你它是 `MISSING`）；split 装好后，**下一次 `load()` 就直接返回实例**。不需要安装监听器，也没有 `refresh()` 调用，表不会过期。调用方甚至不知道 `ProductionHubActivity` 这个类名的存在。
 
 ## flavor / buildType 不用接线
 
@@ -184,7 +184,7 @@ fun onCreateClick(context: Context) {
 | 手写注册表 | 无 | 手写 | 安装回调 + 手动刷新 | 无 |
 | JDK `ServiceLoader` / AutoService | 反射构造 | 无 | 抛 `ServiceConfigurationError` | AutoService 走 APT |
 | DI（Hilt / Koin） | 无 | multibinding | 不在编译期图内 | Hilt 走 KSP / KAPT |
-| **Droid-spi** | **无** | **`key` + 按 variant 成表** | **下一次 `load()` 即可用** | **一次扫描，无 APT** |
+| **droid-spi** | **无** | **`key` + 按 variant 成表** | **下一次 `load()` 即可用** | **一次扫描，无 APT** |
 
 几个日常会感激的细节：
 
@@ -195,13 +195,13 @@ fun onCreateClick(context: Context) {
 
 ## 什么时候不该用它
 
-诚实的边界比功能列表更有用：
+它不适合的场景：
 
 - **依赖图在编译期就全部闭合、全部常驻**？用 Hilt/Dagger。它们有作用域、生命周期、构造注入，这些不是本框架试图提供的东西。
 - **需要运行时加载磁盘上的任意插件类**？本框架是编译期表，每个 provider 都必须对构建可见。
 - service 接口必须放 base / 常驻模块，不支持嵌套类和 `typealias`。
 
-它填的空白就一句话：**"发现一个此刻可能还不在进程里的 provider"**——动态功能模块、大型模块化应用、随变体变化的实现。
+它填的是一个空白：**发现一个此刻可能还不在进程里的 provider**，无论它位于动态功能模块、大型模块化应用，还是某个变体专用的源集。
 
 ## 上手清单
 
@@ -214,4 +214,6 @@ fun onCreateClick(context: Context) {
 
 👉 [github.com/Jayvinz/droid-spi](https://github.com/Jayvinz/droid-spi)
 
-想看它内部为什么长这样——扫描器怎么写、清单怎么跨工程传递、生成的字节码为什么刻意不带静态初始化块——下一篇《编译期 SPI 的插件开发原理》见。
+本文代码片段遵循仓库的 [Apache-2.0 许可](../../LICENSE)。
+
+想看插件怎么做到零反射、零 KSP 的跨模块调用：扫描器怎么写、清单怎么跨工程传递、字节码怎么生成。下一篇《不用反射和 KSP，droid-spi 如何实现跨模块调用》见。

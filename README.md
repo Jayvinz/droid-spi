@@ -1,4 +1,4 @@
-# Droid-spi
+# droid-spi
 
 **Compile-time service discovery for multi-module Android apps.**
 
@@ -22,7 +22,7 @@ dynamic feature modules resolve the moment they are installed.
 
 ## Contents
 
-- [Why Droid-spi](#why-droid-spi)
+- [Why droid-spi](#why-droid-spi)
 - [Quick start](#quick-start)
 - [Requirements](#requirements)
 - [Installation](#installation)
@@ -47,7 +47,7 @@ dynamic feature modules resolve the moment they are installed.
 - [Development](#development)
 - [License](#license)
 
-## Why Droid-spi
+## Why droid-spi
 
 Large multi-module builds are dependency-isolated by design. Business module B needs behavior that  
 lives in business module A, yet B must not depend on A and should not know anything about A's  
@@ -425,9 +425,9 @@ Every multi-module project runs into the same wall. The usual fixes all leave so
 | Hand-written registry | none | hand-written | install callbacks, manual refresh | none |
 | JDK `ServiceLoader` / AutoService | reflective construction | none | throws `ServiceConfigurationError` | APT (AutoService) |
 | DI (Hilt / Koin) | none | multibindings | outside the compiled graph | KSP / KAPT (Hilt) |
-| **Droid-spi** | none | `key`, per-variant tables | next `load()` returns it | one scan, no APT |
+| **droid-spi** | none | `key`, per-variant tables | next `load()` returns it | one scan, no APT |
 
-Droid-spi keeps the `ServiceLoader` call shape and moves the table to build time.
+droid-spi keeps the `ServiceLoader` call shape and moves the table to build time.
 
 ## Project layout
 
@@ -479,7 +479,7 @@ For anything that looks like a framework defect, run the verification matrix in
 - Plugin internals:
   [English](docs/articles/02-droid-spi-plugin-internals.en.md) ·
   [Chinese](docs/articles/02-droid-spi-plugin-internals.zh-CN.md)
-- Earlier long-form series: [Introducing Droid-spi](docs/articles/01-introducing-droid-spi.md)
+- Earlier long-form series: [Introducing droid-spi](docs/articles/01-introducing-droid-spi.md)
   ([Chinese](docs/articles/01-introducing-droid-spi.zh-CN.md)) ·
   [How it works internally](docs/articles/02-how-droid-spi-works.md)
   ([Chinese](docs/articles/02-how-droid-spi-works.zh-CN.md))

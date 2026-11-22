@@ -1,4 +1,4 @@
-# Droid-spi
+# droid-spi
 
 **面向多 module 大型 Android 工程的编译期服务发现。**
 
@@ -18,7 +18,7 @@ English: [README.md](README.md) · `1.0.0-alpha02` · JDK 17 · AGP 8.0–9.5 ·
 
 ## 目录
 
-- [为什么需要 Droid-spi](#为什么需要-droid-spi)
+- [为什么需要 droid-spi](#为什么需要-droid-spi)
 - [快速上手](#快速上手)
 - [环境要求](#环境要求)
 - [集成](#集成)
@@ -43,7 +43,7 @@ English: [README.md](README.md) · `1.0.0-alpha02` · JDK 17 · AGP 8.0–9.5 ·
 - [参与开发](#参与开发)
 - [许可证](#许可证)
 
-## 为什么需要 Droid-spi
+## 为什么需要 droid-spi
 
 大型多 module 工程天然依赖隔离：业务模块 B 需要业务模块 A 提供的能力，但 B 不能依赖 A，
 也不该感知 A 的具体实现。在 base 模块定义 service 接口作为两者之间的契约，A 提供实现，
@@ -396,9 +396,9 @@ module 会让配置类被 JVM 标记为错误，整个表在进程内永久失�
 | 手写注册表 | 无 | 手写 | 安装回调 + 手动刷新 | 无 |
 | JDK `ServiceLoader` / AutoService | 反射构造 | 无 | 抛 `ServiceConfigurationError` | APT（AutoService） |
 | DI（Hilt / Koin） | 无 | multibindings | 在编译期图之外 | KSP / KAPT（Hilt） |
-| **Droid-spi** | 无 | `key`，每 variant 独立表 | 下一次 `load()` 即可用 | 一次扫描，无 APT |
+| **droid-spi** | 无 | `key`，每 variant 独立表 | 下一次 `load()` 即可用 | 一次扫描，无 APT |
 
-Droid-spi 保留 `ServiceLoader` 的调用形态，把表挪到构建期完成。
+droid-spi 保留 `ServiceLoader` 的调用形态，把表挪到构建期完成。
 
 ## 工程结构
 
@@ -448,7 +448,7 @@ flavor × 两种 buildType；`modules/` 提供它的契约、账户、社区和�
 - 插件内部实现：
   [中文](docs/articles/02-droid-spi-plugin-internals.zh-CN.md) ·
   [English](docs/articles/02-droid-spi-plugin-internals.en.md)
-- 早期长文系列：[认识 Droid-spi](docs/articles/01-introducing-droid-spi.zh-CN.md)
+- 早期长文系列：[认识 droid-spi](docs/articles/01-introducing-droid-spi.zh-CN.md)
   （[English](docs/articles/01-introducing-droid-spi.md)）·
   [内部实现剖析](docs/articles/02-how-droid-spi-works.zh-CN.md)
   （[English](docs/articles/02-how-droid-spi-works.md)）
