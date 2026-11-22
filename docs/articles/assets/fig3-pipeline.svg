@@ -1,0 +1,83 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 560" font-family="Segoe UI, Arial, sans-serif">
+  <defs>
+    <marker id="arr" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L9,3 L0,6 z" fill="#4f46e5"/>
+    </marker>
+  </defs>
+  <rect width="960" height="560" fill="#f8fafc"/>
+  <text x="480" y="36" text-anchor="middle" font-size="16" font-weight="600" fill="#1e293b">Droid-spi pipeline: scan → aggregate → runtime</text>
+
+  <!-- Stage 1: Scan -->
+  <rect x="40" y="70" width="270" height="330" rx="12" fill="#eef2ff" stroke="#4f46e5" stroke-width="2"/>
+  <text x="175" y="102" text-anchor="middle" font-size="15" font-weight="600" fill="#3730a3">1 · Scan</text>
+  <text x="175" y="124" text-anchor="middle" font-size="11.5" fill="#64748b">per module × per variant</text>
+  <rect x="62" y="142" width="226" height="120" rx="8" fill="#ffffff" stroke="#a5b4fc" stroke-width="1.5"/>
+  <text x="175" y="166" text-anchor="middle" font-size="12" font-weight="600" fill="#1e293b">variant.sources</text>
+  <text x="175" y="188" text-anchor="middle" font-size="11" fill="#64748b">src/main + src/debug</text>
+  <text x="175" y="206" text-anchor="middle" font-size="11" fill="#64748b">+ src/free + src/vip ...</text>
+  <text x="175" y="230" text-anchor="middle" font-size="10.5" fill="#92400e">never just src/main</text>
+  <text x="175" y="248" text-anchor="middle" font-size="10.5" fill="#92400e">overlays would be missed</text>
+
+  <rect x="62" y="278" width="226" height="104" rx="8" fill="#ffffff" stroke="#a5b4fc" stroke-width="1.5"/>
+  <text x="175" y="302" text-anchor="middle" font-size="12" font-weight="600" fill="#1e293b">lexical scan (no AST)</text>
+  <text x="175" y="324" text-anchor="middle" font-size="11" fill="#64748b">stripComments · maskStrings</text>
+  <text x="175" y="344" text-anchor="middle" font-size="11" fill="#64748b">find @ServiceProvider /</text>
+  <text x="175" y="362" text-anchor="middle" font-size="11" fill="#64748b">@ProviderFactory by text</text>
+
+  <text x="175" y="424" text-anchor="middle" font-size="11.5" font-weight="600" fill="#4338ca">out: services.txt</text>
+  <text x="175" y="444" text-anchor="middle" font-size="10.5" fill="#64748b">service | provider | key | factory</text>
+
+  <!-- arrow 1 -->
+  <line x1="312" y1="235" x2="368" y2="235" stroke="#4f46e5" stroke-width="2.5" marker-end="url(#arr)"/>
+  <text x="340" y="222" text-anchor="middle" font-size="10.5" fill="#4338ca">spi-manifest</text>
+  <text x="340" y="256" text-anchor="middle" font-size="10.5" fill="#4338ca">artifact</text>
+
+  <!-- Stage 2: Aggregate -->
+  <rect x="370" y="70" width="270" height="330" rx="12" fill="#ecfdf5" stroke="#0d9488" stroke-width="2"/>
+  <text x="505" y="102" text-anchor="middle" font-size="15" font-weight="600" fill="#0f766e">2 · Aggregate</text>
+  <text x="505" y="124" text-anchor="middle" font-size="11.5" fill="#64748b">app module × per variant</text>
+
+  <rect x="392" y="142" width="226" height="120" rx="8" fill="#ffffff" stroke="#5eead4" stroke-width="1.5"/>
+  <text x="505" y="166" text-anchor="middle" font-size="12" font-weight="600" fill="#1e293b">artifactView collection</text>
+  <text x="505" y="188" text-anchor="middle" font-size="11" fill="#64748b">filter type: spi-manifest</text>
+  <text x="505" y="210" text-anchor="middle" font-size="11" fill="#64748b">transitive + lazy</text>
+  <text x="505" y="232" text-anchor="middle" font-size="10.5" fill="#0f766e">+ dynamicFeatures deps</text>
+  <text x="505" y="250" text-anchor="middle" font-size="10.5" fill="#0f766e">works with config cache</text>
+
+  <rect x="392" y="278" width="226" height="104" rx="8" fill="#ffffff" stroke="#5eead4" stroke-width="1.5"/>
+  <text x="505" y="302" text-anchor="middle" font-size="12" font-weight="600" fill="#1e293b">code generation</text>
+  <text x="505" y="324" text-anchor="middle" font-size="11" fill="#64748b">duplicate keys → fail build</text>
+  <text x="505" y="344" text-anchor="middle" font-size="11" fill="#64748b">class literals in methods</text>
+  <text x="505" y="362" text-anchor="middle" font-size="11" fill="#64748b">no static initializer</text>
+
+  <text x="505" y="424" text-anchor="middle" font-size="11.5" font-weight="600" fill="#0f766e">out: ServiceConfiguration.class</text>
+  <text x="505" y="444" text-anchor="middle" font-size="10.5" fill="#64748b">toAppend(CLASSES), acyclic</text>
+
+  <!-- arrow 2 -->
+  <line x1="642" y1="235" x2="698" y2="235" stroke="#4f46e5" stroke-width="2.5" marker-end="url(#arr)"/>
+  <text x="670" y="222" text-anchor="middle" font-size="10.5" fill="#4338ca">bundled</text>
+  <text x="670" y="256" text-anchor="middle" font-size="10.5" fill="#4338ca">in APK</text>
+
+  <!-- Stage 3: Runtime -->
+  <rect x="700" y="70" width="220" height="330" rx="12" fill="#fef3c7" stroke="#d97706" stroke-width="2"/>
+  <text x="810" y="102" text-anchor="middle" font-size="15" font-weight="600" fill="#92400e">3 · Runtime</text>
+  <text x="810" y="124" text-anchor="middle" font-size="11.5" fill="#64748b">zero reflection</text>
+
+  <rect x="722" y="142" width="176" height="150" rx="8" fill="#ffffff" stroke="#fcd34d" stroke-width="1.5"/>
+  <text x="810" y="166" text-anchor="middle" font-size="12" font-weight="600" fill="#1e293b">ServiceLoader</text>
+  <text x="810" y="190" text-anchor="middle" font-size="11" fill="#64748b">load() / loadAll()</text>
+  <text x="810" y="210" text-anchor="middle" font-size="11" fill="#64748b">stateOf()</text>
+  <text x="810" y="236" text-anchor="middle" font-size="11" fill="#b45309">MISSING → retry</text>
+  <text x="810" y="256" text-anchor="middle" font-size="11" fill="#b45309">READY → use</text>
+  <text x="810" y="276" text-anchor="middle" font-size="11" fill="#b45309">DEAD → give up</text>
+
+  <rect x="722" y="308" width="176" height="76" rx="8" fill="#ffffff" stroke="#fcd34d" stroke-width="1.5"/>
+  <text x="810" y="332" text-anchor="middle" font-size="12" font-weight="600" fill="#1e293b">probing</text>
+  <text x="810" y="354" text-anchor="middle" font-size="11" fill="#64748b">ldc resolves lazily</text>
+  <text x="810" y="372" text-anchor="middle" font-size="11" fill="#64748b">no Class.forName</text>
+
+  <!-- legend -->
+  <rect x="40" y="468" width="880" height="64" rx="10" fill="#f1f5f9" stroke="#cbd5e1" stroke-width="1"/>
+  <text x="60" y="494" font-size="12" font-weight="600" fill="#1e293b">Ownership split:</text>
+  <text x="60" y="516" font-size="11.5" fill="#475569">Scan reads source text only (no jar/aar unpacking). Aggregate writes exactly one class. Runtime never looks up a class by name.</text>
+</svg>

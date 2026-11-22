@@ -1,0 +1,70 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 560" font-family="Segoe UI, Arial, sans-serif">
+  <defs>
+    <marker id="arrGreen" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L9,3 L0,6 z" fill="#16a34a"/>
+    </marker>
+    <marker id="arrRed" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L9,3 L0,6 z" fill="#dc2626"/>
+    </marker>
+  </defs>
+  <rect width="960" height="560" fill="#f8fafc"/>
+  <text x="480" y="36" text-anchor="middle" font-size="16" font-weight="600" fill="#1e293b">Where the class literal lives decides whether the table survives</text>
+
+  <!-- LEFT: clinit -->
+  <rect x="40" y="64" width="425" height="420" rx="12" fill="#fef2f2" stroke="#dc2626" stroke-width="2"/>
+  <text x="252" y="96" text-anchor="middle" font-size="14.5" font-weight="600" fill="#991b1b">Wrong: literals in a static array (&lt;clinit&gt;)</text>
+
+  <rect x="64" y="116" width="377" height="76" rx="8" fill="#ffffff" stroke="#fca5a5" stroke-width="1.5"/>
+  <text x="252" y="142" text-anchor="middle" font-size="12" font-family="Consolas, monospace" fill="#1e293b">static final Class&lt;?&gt;[] SERVICES = {</text>
+  <text x="252" y="162" text-anchor="middle" font-size="12" font-family="Consolas, monospace" fill="#1e293b">HomeServiceImpl.class, CameraServiceImpl.class };</text>
+  <text x="252" y="182" text-anchor="middle" font-size="10.5" fill="#64748b">all literals resolved during class initialization</text>
+
+  <line x1="252" y1="192" x2="252" y2="222" stroke="#dc2626" stroke-width="2" marker-end="url(#arrRed)"/>
+
+  <rect x="64" y="226" width="377" height="58" rx="8" fill="#ffffff" stroke="#fca5a5" stroke-width="1.5"/>
+  <text x="252" y="250" text-anchor="middle" font-size="12" font-weight="600" fill="#991b1b">CameraServiceImpl not in the process</text>
+  <text x="252" y="270" text-anchor="middle" font-size="11" fill="#b91c1c">(dynamic module not installed)</text>
+
+  <line x1="252" y1="284" x2="252" y2="312" stroke="#dc2626" stroke-width="2" marker-end="url(#arrRed)"/>
+
+  <rect x="64" y="316" width="377" height="58" rx="8" fill="#ffffff" stroke="#fca5a5" stroke-width="1.5"/>
+  <text x="252" y="340" text-anchor="middle" font-size="12" font-weight="600" fill="#991b1b">NoClassDefFoundError in &lt;clinit&gt;</text>
+  <text x="252" y="360" text-anchor="middle" font-size="11" fill="#b91c1c">class marked erroneous, permanently</text>
+
+  <line x1="252" y1="374" x2="252" y2="402" stroke="#dc2626" stroke-width="2" marker-end="url(#arrRed)"/>
+
+  <rect x="64" y="406" width="377" height="58" rx="8" fill="#fee2e2" stroke="#dc2626" stroke-width="1.5"/>
+  <text x="252" y="430" text-anchor="middle" font-size="12" font-weight="600" fill="#7f1d1d">Every access: Could not initialize class</text>
+  <text x="252" y="450" text-anchor="middle" font-size="11" font-weight="600" fill="#7f1d1d">the whole table is dead — even after install</text>
+
+  <!-- RIGHT: method body -->
+  <rect x="495" y="64" width="425" height="420" rx="12" fill="#f0fdf4" stroke="#16a34a" stroke-width="2"/>
+  <text x="707" y="96" text-anchor="middle" font-size="14.5" font-weight="600" fill="#14532d">Right: literals in a method body (ldc)</text>
+
+  <rect x="519" y="116" width="377" height="76" rx="8" fill="#ffffff" stroke="#86efac" stroke-width="1.5"/>
+  <text x="707" y="142" text-anchor="middle" font-size="12" font-family="Consolas, monospace" fill="#1e293b">Class providerAt(int i) {</text>
+  <text x="707" y="162" text-anchor="middle" font-size="12" font-family="Consolas, monospace" fill="#1e293b">if (i == 0) return HomeServiceImpl.class; ... }</text>
+  <text x="707" y="182" text-anchor="middle" font-size="10.5" fill="#64748b">each literal resolved lazily, per call</text>
+
+  <line x1="707" y1="192" x2="707" y2="222" stroke="#16a34a" stroke-width="2" marker-end="url(#arrGreen)"/>
+
+  <rect x="519" y="226" width="377" height="58" rx="8" fill="#ffffff" stroke="#86efac" stroke-width="1.5"/>
+  <text x="707" y="250" text-anchor="middle" font-size="12" font-weight="600" fill="#14532d">CameraServiceImpl not in the process</text>
+  <text x="707" y="270" text-anchor="middle" font-size="11" fill="#166534">same situation</text>
+
+  <line x1="707" y1="284" x2="707" y2="312" stroke="#16a34a" stroke-width="2" marker-end="url(#arrGreen)"/>
+
+  <rect x="519" y="316" width="377" height="58" rx="8" fill="#ffffff" stroke="#86efac" stroke-width="1.5"/>
+  <text x="707" y="340" text-anchor="middle" font-size="12" font-weight="600" fill="#14532d">That one entry is MISSING</text>
+  <text x="707" y="360" text-anchor="middle" font-size="11" fill="#166534">not cached, retried on next load()</text>
+
+  <line x1="707" y1="374" x2="707" y2="402" stroke="#16a34a" stroke-width="2" marker-end="url(#arrGreen)"/>
+
+  <rect x="519" y="406" width="377" height="58" rx="8" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
+  <text x="707" y="430" text-anchor="middle" font-size="12" font-weight="600" fill="#14532d">Split installs → next load() returns READY</text>
+  <text x="707" y="450" text-anchor="middle" font-size="11" font-weight="600" fill="#14532d">other entries were never affected</text>
+
+  <!-- footer -->
+  <rect x="40" y="500" width="880" height="44" rx="10" fill="#f1f5f9" stroke="#cbd5e1" stroke-width="1"/>
+  <text x="480" y="527" text-anchor="middle" font-size="12" fill="#475569">ldc X.class resolves without initializing · failed symbolic resolution is not cached · initialization failure is one-shot and irreversible</text>
+</svg>

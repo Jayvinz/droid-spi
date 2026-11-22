@@ -1,0 +1,79 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 960 620" font-family="Segoe UI, Arial, sans-serif">
+  <defs>
+    <marker id="arr" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L9,3 L0,6 z" fill="#64748b"/>
+    </marker>
+    <marker id="arrGreen" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L9,3 L0,6 z" fill="#16a34a"/>
+    </marker>
+    <marker id="arrIndigo" markerWidth="10" markerHeight="10" refX="9" refY="3" orient="auto" markerUnits="strokeWidth">
+      <path d="M0,0 L9,3 L0,6 z" fill="#4f46e5"/>
+    </marker>
+  </defs>
+  <rect width="960" height="620" fill="#f8fafc"/>
+
+  <text x="480" y="34" text-anchor="middle" font-size="16" font-weight="600" fill="#1e293b">With Droid-spi: contract only at compile time, table lookup at runtime</text>
+
+  <!-- app -->
+  <rect x="360" y="58" width="240" height="86" rx="10" fill="#e0e7ff" stroke="#4f46e5" stroke-width="2"/>
+  <text x="480" y="88" text-anchor="middle" font-size="17" font-weight="600" fill="#1e293b">:app</text>
+  <text x="480" y="110" text-anchor="middle" font-size="12" fill="#4338ca">ServiceLoader.load&lt;FeedSource&gt;()</text>
+  <text x="480" y="130" text-anchor="middle" font-size="11" fill="#64748b">gets the instance or null</text>
+
+  <!-- contract -->
+  <rect x="60" y="240" width="250" height="100" rx="10" fill="#ecfdf5" stroke="#0d9488" stroke-width="2"/>
+  <text x="185" y="272" text-anchor="middle" font-size="15" font-weight="600" fill="#1e293b">:core:contract</text>
+  <text x="185" y="298" text-anchor="middle" font-size="13" fill="#0f766e">interface FeedSource</text>
+  <text x="185" y="320" text-anchor="middle" font-size="13" fill="#0f766e">interface ProductionEntry</text>
+
+  <!-- feature-feed -->
+  <rect x="650" y="170" width="260" height="110" rx="10" fill="#e0e7ff" stroke="#4f46e5" stroke-width="2"/>
+  <text x="780" y="200" text-anchor="middle" font-size="15" font-weight="600" fill="#1e293b">:feature:feed</text>
+  <text x="780" y="224" text-anchor="middle" font-size="12.5" fill="#4338ca">@ServiceProvider(FeedSource)</text>
+  <text x="780" y="246" text-anchor="middle" font-size="12.5" fill="#4338ca">class RecommendFeedSource</text>
+  <text x="780" y="268" text-anchor="middle" font-size="11" fill="#64748b">never imported by callers</text>
+
+  <!-- feature-production -->
+  <rect x="650" y="330" width="260" height="110" rx="10" fill="#fef3c7" stroke="#d97706" stroke-width="2" stroke-dasharray="7 4"/>
+  <text x="780" y="360" text-anchor="middle" font-size="15" font-weight="600" fill="#1e293b">:feature:production</text>
+  <text x="780" y="384" text-anchor="middle" font-size="12.5" fill="#b45309">@ServiceProvider(ProductionEntry)</text>
+  <text x="780" y="406" text-anchor="middle" font-size="12.5" fill="#b45309">class ProductionEntryImpl</text>
+  <text x="780" y="428" text-anchor="middle" font-size="11" fill="#b45309">dynamic feature, optional</text>
+
+  <!-- contract edges -->
+  <line x1="700" y1="280" x2="250" y2="278" stroke="#64748b" stroke-width="2" marker-end="url(#arr)"/>
+  <line x1="700" y1="330" x2="255" y2="322" stroke="#64748b" stroke-width="2" marker-end="url(#arr)"/>
+  <line x1="420" y1="144" x2="230" y2="240" stroke="#64748b" stroke-width="2" marker-end="url(#arr)"/>
+  <text x="300" y="196" text-anchor="middle" font-size="11" fill="#64748b">depends on contract</text>
+
+  <!-- runtime probes: route along the right margin so no text is covered -->
+  <path d="M 600 82 H 938 V 225 H 914" fill="none" stroke="#16a34a" stroke-width="2.5" stroke-dasharray="8 5" marker-end="url(#arrGreen)"/>
+  <path d="M 600 118 H 952 V 385 H 914" fill="none" stroke="#16a34a" stroke-width="2.5" stroke-dasharray="8 5" marker-end="url(#arrGreen)"/>
+  <text x="838" y="74" text-anchor="middle" font-size="11.5" fill="#15803d">load() probes the table</text>
+  <text x="838" y="152" text-anchor="middle" font-size="11.5" fill="#15803d">no compile-time dependency</text>
+
+  <!-- build-time pipeline -->
+  <rect x="60" y="478" width="850" height="110" rx="10" fill="#eef2ff" stroke="#4f46e5" stroke-width="1.5"/>
+  <text x="80" y="506" font-size="13" font-weight="600" fill="#3730a3">Build time (Gradle plugin)</text>
+
+  <rect x="85" y="518" width="185" height="52" rx="8" fill="#ffffff" stroke="#a5b4fc" stroke-width="1.5"/>
+  <text x="177" y="540" text-anchor="middle" font-size="12" font-weight="600" fill="#1e293b">1. Scan</text>
+  <text x="177" y="558" text-anchor="middle" font-size="10.5" fill="#64748b">@ServiceProvider → services.txt</text>
+
+  <line x1="272" y1="544" x2="330" y2="544" stroke="#4f46e5" stroke-width="2" marker-end="url(#arrIndigo)"/>
+
+  <rect x="332" y="518" width="185" height="52" rx="8" fill="#ffffff" stroke="#a5b4fc" stroke-width="1.5"/>
+  <text x="424" y="540" text-anchor="middle" font-size="12" font-weight="600" fill="#1e293b">2. Pass manifests</text>
+  <text x="424" y="558" text-anchor="middle" font-size="10.5" fill="#64748b">typed artifact, per variant</text>
+
+  <line x1="519" y1="544" x2="577" y2="544" stroke="#4f46e5" stroke-width="2" marker-end="url(#arrIndigo)"/>
+
+  <rect x="579" y="518" width="185" height="52" rx="8" fill="#ffffff" stroke="#a5b4fc" stroke-width="1.5"/>
+  <text x="671" y="540" text-anchor="middle" font-size="12" font-weight="600" fill="#1e293b">3. Generate table</text>
+  <text x="671" y="558" text-anchor="middle" font-size="10.5" fill="#64748b">ServiceConfiguration.class</text>
+
+  <line x1="766" y1="544" x2="824" y2="544" stroke="#4f46e5" stroke-width="2" marker-end="url(#arrIndigo)"/>
+
+  <rect x="826" y="518" width="66" height="52" rx="8" fill="#dcfce7" stroke="#16a34a" stroke-width="1.5"/>
+  <text x="859" y="548" text-anchor="middle" font-size="11" font-weight="600" fill="#15803d">ready</text>
+</svg>
