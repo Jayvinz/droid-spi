@@ -20,7 +20,7 @@ droid-spi takes a different route: it keeps the calling shape of the JDK's `Serv
 
 ![Figure 2. With droid-spi: only the contract at compile time, table lookup at runtime](assets/fig2-droid-spi-architecture.png)
 
-**Note**: This post is based on `1.0.0-alpha02`. Requirements: JDK 17, AGP 8.0–8.13 or 9.x, `minSdk 24`.
+**Note**: This post is based on `1.0.0`. Requirements: JDK 17, AGP 8.0–8.13 or 9.x, `minSdk 24`.
 
 ## See it in action first
 
@@ -66,14 +66,14 @@ dependencyResolutionManagement {
 // build.gradle.kts of every module that declares providers
 plugins {
     // works with application, library, and dynamic-feature modules
-    id("top.jayvin.droidspi") version "1.0.0-alpha02"
+    id("top.jayvin.droidspi") version "1.0.0"
 }
 
 dependencies {
     // modules with providers only need the annotation
-    implementation("top.jayvin.droidspi:annotation:1.0.0-alpha02")
+    implementation("top.jayvin.droidspi:annotation:1.0.0")
     // modules that call ServiceLoader (like app) add the runtime
-    implementation("top.jayvin.droidspi:runtime:1.0.0-alpha02")
+    implementation("top.jayvin.droidspi:runtime:1.0.0")
 }
 ```
 

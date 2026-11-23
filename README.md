@@ -2,7 +2,7 @@
 
 **Compile-time service discovery for multi-module Android apps.**
 
-中文文档：[README.zh-CN.md](README.zh-CN.md) · `1.0.0-alpha02` · JDK 17 · AGP 8.0–9.5 · minSdk 24
+中文文档：[README.zh-CN.md](README.zh-CN.md) · `1.0.0` · JDK 17 · AGP 8.0–9.5 · minSdk 24
 
 Declare a service interface as the contract betwee&#x6E;*&#x20;modules, implement it in any module, and look  
 it up at runtime. No reflection, no annotation processing, and providers that&#x20;*&#x6C;ive in on-demand  
@@ -70,7 +70,7 @@ installed, never leaks into the call site.
 // module build.gradle.kts
 plugins {
     // supported module types: application, library, dynamic-feature
-    id("top.jayvin.droidspi") version "1.0.0-alpha02"
+    id("top.jayvin.droidspi") version "1.0.0"
 }
 ```
 
@@ -144,13 +144,13 @@ dependencyResolutionManagement {
 // module build.gradle.kts
 dependencies {
     // provider modules only need annotation
-    implementation("top.jayvin.droidspi:annotation:1.0.0-alpha02")
+    implementation("top.jayvin.droidspi:annotation:1.0.0")
 }
 
 // app/build.gradle.kts
 dependencies {
-    implementation("top.jayvin.droidspi:annotation:1.0.0-alpha02")
-    implementation("top.jayvin.droidspi:runtime:1.0.0-alpha02")
+    implementation("top.jayvin.droidspi:annotation:1.0.0")
+    implementation("top.jayvin.droidspi:runtime:1.0.0")
 }
 ```
 

@@ -140,7 +140,7 @@ the workflow and the build both treat an absent password as an unencrypted key. 
 disables signing tasks otherwise.
 
 To cut a release: bump `spiVersion` in `gradle.properties`, commit, create and push the tag
-(`git tag v1.0.0-alpha02 && git push origin v1.0.0-alpha02`).
+(`git tag v1.0.0 && git push origin v1.0.0`).
 
 ## Module layout
 

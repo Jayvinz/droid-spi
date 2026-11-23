@@ -20,7 +20,7 @@
 
 ![图 2 · 接入 droid-spi 后：编译期只依赖 contract，运行时查表拿实例](assets/fig2-droid-spi-architecture.png)
 
-**Note**：本文基于 `1.0.0-alpha02`。需要 JDK 17、AGP 8.0–8.13 或 9.x、`minSdk 24`。
+**Note**：本文基于 `1.0.0`。需要 JDK 17、AGP 8.0–8.13 或 9.x、`minSdk 24`。
 
 ## 先看效果
 
@@ -65,14 +65,14 @@ dependencyResolutionManagement {
 // 每个声明 provider 的模块 build.gradle.kts
 plugins {
     // 支持 application、library、dynamic-feature 三种模块类型
-    id("top.jayvin.droidspi") version "1.0.0-alpha02"
+    id("top.jayvin.droidspi") version "1.0.0"
 }
 
 dependencies {
     // 有 provider 的模块只需要注解
-    implementation("top.jayvin.droidspi:annotation:1.0.0-alpha02")
+    implementation("top.jayvin.droidspi:annotation:1.0.0")
     // 需要调用 ServiceLoader 的地方（比如 app）加 runtime
-    implementation("top.jayvin.droidspi:runtime:1.0.0-alpha02")
+    implementation("top.jayvin.droidspi:runtime:1.0.0")
 }
 ```
 

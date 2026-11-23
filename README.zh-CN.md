@@ -2,7 +2,7 @@
 
 **面向多 module 大型 Android 工程的编译期服务发现。**
 
-English: [README.md](README.md) · `1.0.0-alpha02` · JDK 17 · AGP 8.0–9.5 · minSdk 24
+English: [README.md](README.md) · `1.0.0` · JDK 17 · AGP 8.0–9.5 · minSdk 24
 
 把 service 接口声明成模块之间的契约，任意模块提供实现，运行时按需查找实例。全程零反射、零注解处理；
 即使实现位于按需下发的 dynamic feature 模块，装好后下一次查询即可用。
@@ -63,7 +63,7 @@ B 不引用 A 的任何代码。哪个模块提供了实现、该模块是否已
 // 模块 build.gradle.kts
 plugins {
     // 支持的模块类型：application、library、dynamic-feature
-    id("top.jayvin.droidspi") version "1.0.0-alpha02"
+    id("top.jayvin.droidspi") version "1.0.0"
 }
 ```
 
@@ -135,13 +135,13 @@ dependencyResolutionManagement {
 // 模块 build.gradle.kts
 dependencies {
     // provider 模块只需要 annotation
-    implementation("top.jayvin.droidspi:annotation:1.0.0-alpha02")
+    implementation("top.jayvin.droidspi:annotation:1.0.0")
 }
 
 // app/build.gradle.kts
 dependencies {
-    implementation("top.jayvin.droidspi:annotation:1.0.0-alpha02")
-    implementation("top.jayvin.droidspi:runtime:1.0.0-alpha02")
+    implementation("top.jayvin.droidspi:annotation:1.0.0")
+    implementation("top.jayvin.droidspi:runtime:1.0.0")
 }
 ```
 
