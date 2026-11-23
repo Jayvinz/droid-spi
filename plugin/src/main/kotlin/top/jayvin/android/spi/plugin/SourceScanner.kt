@@ -68,8 +68,9 @@ internal class TypeIndex {
 
 /** One preprocessing result per source file, shared by the type index and the annotation scan to avoid re-reading and re-lexing. */
 internal class SourceDocument(val fileName: String, raw: String) {
-    val clean: String = SourceText.stripComments(raw)
-    val masked: String = SourceText.maskStrings(clean)
+    private val processed = SourceText.process(raw)
+    val clean: String = processed.clean
+    val masked: String = processed.masked
 }
 
 /**
@@ -100,11 +101,12 @@ internal class SourceScanner(private val index: TypeIndex) {
         // parsing is bounded to the file header. Sweeping the whole file with the import regex
         // was the dominant scan cost, because stripped comments leave long whitespace runs that
         // the regex has to walk and backtrack over.
-        val headerEnd = DECL_RE.find(masked)?.range?.first ?: masked.length
+        val firstDeclaration = DeclarationScanner.firstStart(masked)
+        val headerEnd = if (firstDeclaration < 0) masked.length else firstDeclaration
         val pkg = packageOf(masked, headerEnd)
 
         val declared = ArrayList<String>()
-        DECL_RE.findAll(masked).forEach { declared += qualify(pkg, it.groupValues[2]) }
+        DeclarationScanner.forEach(masked) { declared += qualify(pkg, it.name) }
 
         // A substring check is an order of magnitude cheaper than a regex sweep, and most source
         // files contain no annotation at all; skip them before touching imports or the class body.
@@ -282,17 +284,17 @@ internal class SourceScanner(private val index: TypeIndex) {
 
     // ── Class declarations and factory methods ────────────────────
     private fun findClassDecl(masked: String, from: Int, where: String, hasBody: Boolean): ClassDecl {
-        val m = DECL_RE.find(masked, from)
+        val declaration = DeclarationScanner.find(masked, from)
             ?: throw GradleException("$where: no class declaration found after @ServiceProvider")
-        val name = m.groupValues[2]
+        val name = declaration.name
 
         if (!hasBody) return ClassDecl(name, null)
 
-        val brace = masked.indexOf('{', m.range.last + 1)
-        if (brace < 0 || brace - m.range.last > MAX_CLASS_HEADER) return ClassDecl(name, null)
+        val brace = masked.indexOf('{', declaration.end)
+        if (brace < 0 || brace - (declaration.end - 1) > MAX_CLASS_HEADER) return ClassDecl(name, null)
         // Another class declaration appears in between, so the current class has no body
         // (Kotlin `class Foo : Bar` without braces).
-        if (DECL_RE.containsMatchIn(masked.substring(m.range.last + 1, brace))) {
+        if (DeclarationScanner.contains(masked, declaration.end, brace)) {
             return ClassDecl(name, null)
         }
         return ClassDecl(name, brace..matchPair(masked, brace, '{', '}'))
@@ -429,7 +431,6 @@ internal class SourceScanner(private val index: TypeIndex) {
         private val AS_TOKEN = Regex("""\s+as\s+""")
         private val SERVICE_PROVIDER_RE = Regex("""@ServiceProvider\s*\(""")
         private val STRING_LITERAL = Regex(""""((?:[^"\\]|\\.)*)"""")
-        private val DECL_RE = Regex("""\b(class|object|interface)\s+([A-Za-z_]\w*)""")
         private val KOTLIN_FUN = Regex("""\bfun\s+([A-Za-z_]\w*)\s*\(""")
         private val STATIC_RE = Regex("""\bstatic\b""")
         private val JAVA_FUN = Regex("""([A-Za-z_]\w*)\s*\(""")

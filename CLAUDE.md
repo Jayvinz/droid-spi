@@ -254,8 +254,11 @@ These are correctness red lines, not style preferences:
 
 ## Scanner boundaries (read before changing `SourceScanner`)
 
-- Source code is parsed with regexes plus bracket matching, not an AST. `SourceText`
-  strips comments and masks string contents so structure matching cannot be confused.
+- Source code is parsed with lightweight character scans and regexes plus bracket matching, not
+  an AST. `SourceText` produces the comment-stripped and string-masked texts in **one pass**, and
+  `DeclarationScanner` finds `class` / `object` / `interface` declarations with the same matching
+  rules as the old `DECL_RE` regex without the regex cost. Structure matching must never be
+  confused by comments or string contents.
 - `import a.b.*` is only resolvable when the type is imported explicitly or is unique in the
   module's `TypeIndex`; otherwise the build fails and asks for an explicit import / FQN.
 - Nested classes and `typealias` are not supported as services.

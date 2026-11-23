@@ -65,7 +65,7 @@ class ParseCacheTest {
         assertTrue(ParseCache.read(File("spi-cache-does-not-exist")).isEmpty())
 
         val file = tempFile("spi-parse-cache-bad")
-        file.writeText("droid-spi-parse-cache-v1\nnot-a-record\n")
+        file.writeText("droid-spi-parse-cache-v2\nnot-a-record\n")
         assertTrue(ParseCache.read(file).isEmpty())
 
         val stale = tempFile("spi-parse-cache-stale")

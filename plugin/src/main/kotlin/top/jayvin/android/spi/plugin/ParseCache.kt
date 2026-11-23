@@ -21,7 +21,7 @@ import java.util.Base64
  */
 internal object ParseCache {
 
-    private const val HEADER = "droid-spi-parse-cache-v1"
+    private const val HEADER = "droid-spi-parse-cache-v2"
     private const val COLUMNS = 7
     private const val RECORD_END = "#"
 
