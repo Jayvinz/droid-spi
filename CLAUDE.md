@@ -70,7 +70,7 @@ from it and stays `top.jayvin.android.spi`):
 ./gradlew :app:assembleFreeDebug :app:assembleVipDebug :app:assembleFreeRelease :app:assembleVipRelease
 ./gradlew :app:bundleFreeDebug     # demo AAB (includes the production split)
 
-# Runtime unit tests (all) and the plugin's merge-validation tests
+# Runtime unit tests and the plugin's unit + TestKit functional tests
 ./gradlew :runtime:testDebugUnitTest
 ./gradlew :plugin:test
 # A single test class / a single test method
@@ -83,9 +83,11 @@ fresh clone fails**; run the publish command first. On a fresh clone (or after d
 `local-repo/`) that publish needs `--configure-on-demand`, because the demo modules apply the
 plugin being published: `./gradlew :annotation:publish :runtime:publish :plugin:publish
 --configure-on-demand`. The flag is unnecessary once the plugin exists in `local-repo/`.
-`plugin` has no test sources;
-the `runtime` tests are plain JVM unit tests that use a fake `ProviderConfiguration` to
-simulate "module not installed", so no device or emulator is needed.
+`plugin` tests are unit tests for the scanner / parse cache / table plus Gradle TestKit
+functional tests: the task-level scan/generate builds need neither AGP nor the SDK, and
+`AgpFunctionalTest` applies AGP to a minimal app when an SDK is configured (skipped otherwise,
+adds ~20-30 s); the `runtime` tests are plain JVM unit tests that use a fake `ProviderConfiguration`
+to simulate "module not installed", so no device or emulator is needed.
 
 Verify the generated artifact (per variant; the path uses the variant name):
 
@@ -101,9 +103,11 @@ After any change to scanning, aggregation, artifact wiring, or caching, run the 
 ```bash
 ./gradlew :annotation:publish :runtime:publish :plugin:publish
 ./gradlew :runtime:testDebugUnitTest --rerun-tasks
+./gradlew :plugin:test
 ./gradlew clean :app:assembleFreeDebug :app:assembleVipDebug :app:assembleFreeRelease :app:assembleVipRelease
 ./gradlew :app:assembleFreeDebug --configuration-cache
 ./gradlew :app:assembleFreeDebug --configuration-cache -Dorg.gradle.unsafe.isolated-projects=true
+bash scripts/verify-compat.sh
 ```
 
 Then add and remove a temporary `@ServiceProvider` once with each cache mode to prove the
@@ -340,7 +344,8 @@ against AGP 8.7.3 and only uses APIs that keep the same descriptors across 8.x a
 - `compat/agp8/` (AGP 8.7.3, Gradle 8.9) and `compat/agp80/` (AGP 8.0.2, Gradle 8.2) are
   standalone fixtures that consume `local-repo`; both use Kotlin 2.0.21 and share their demo
   providers from `compat/shared/demo`. Run them after publishing the framework to keep the 8.x
-  lines covered; see their `README.md` files.
+  lines covered; see their `README.md` files. `bash scripts/verify-compat.sh` publishes, builds
+  both fixtures and asserts the generated class and manifest contents.
 - **AGP 7.x is deliberately unsupported** (decided 2026-11-20 after a feasibility study):
   - 7.0–7.3 have no `ScopedArtifacts`/`ScopedArtifact` (and `Sources` only appears in 7.2), so
     the manifest aggregation and CLASSES append cannot run there at all.

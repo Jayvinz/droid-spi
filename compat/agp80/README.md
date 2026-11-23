@@ -28,3 +28,6 @@ unzip -p app/build/outputs/apk/debug/app-debug.apk classes.dex \
 
 On Windows use `gradlew.bat`. The fixture reads `sdk.dir` from `local.properties` like any
 Android project, or from `ANDROID_HOME`.
+
+From the repository root, `bash scripts/verify-compat.sh` publishes the framework, builds both
+fixtures and asserts these checks automatically.

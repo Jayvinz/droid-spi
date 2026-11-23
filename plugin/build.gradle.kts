@@ -36,6 +36,8 @@ dependencies {
     // descriptors are identical in 8.7.3 and 9.5.1 (see the AGP compatibility notes in CLAUDE.md).
     compileOnly("com.android.tools.build:gradle:8.7.3")
     testImplementation("junit:junit:4.13.2")
+    // Task-level end-to-end tests that run real Gradle builds without AGP.
+    testImplementation(gradleTestKit())
 }
 
 gradlePlugin {
