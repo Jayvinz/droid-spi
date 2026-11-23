@@ -20,6 +20,9 @@ internal data class ProviderEntry(
     }
 }
 
+/** Marker checked with a cheap substring test before the more expensive annotation scan. */
+internal const val SERVICE_PROVIDER_ANNOTATION = "@ServiceProvider"
+
 /**
  * An index of all top-level types declared in this module, used to "guess the FQN even without
  * an explicit import". It is only a hint; when it cannot guess, it falls back to the same package.
@@ -61,11 +64,22 @@ internal class SourceScanner(private val index: TypeIndex) {
 
     /** Scans one preprocessed source document for `@ServiceProvider` entries. */
     fun scan(doc: SourceDocument): List<ProviderEntry> {
-        val clean = doc.clean
         val masked = doc.masked
 
-        val pkg = packageOf(masked)
-        val (explicitImports, wildcards) = parseImports(masked)
+        // A substring check is an order of magnitude cheaper than a regex sweep, and most source
+        // files contain no annotation at all; skip them before touching imports or the class body.
+        if (!masked.contains(SERVICE_PROVIDER_ANNOTATION)) return emptyList()
+
+        val clean = doc.clean
+
+        // Imports can only appear before the first top-level declaration, so package/import
+        // parsing is bounded to the file header. Sweeping the whole file with the import regex
+        // was the dominant scan cost, because stripped comments leave long whitespace runs that
+        // the regex has to walk and backtrack over.
+        val headerEnd = DECL_RE.find(masked)?.range?.first ?: masked.length
+        val pkg = packageOf(masked, headerEnd)
+        val (explicitImports, wildcards) = parseImports(masked, headerEnd)
+        val hasFactory = masked.contains(PROVIDER_FACTORY)
 
         val out = ArrayList<ProviderEntry>()
         var cursor = 0
@@ -90,7 +104,9 @@ internal class SourceScanner(private val index: TypeIndex) {
             val (serviceExpr, key) = parseArgs(args, where)
             val service = resolve(serviceExpr, pkg, explicitImports, wildcards, doc.fileName, where)
 
-            val decl = findClassDecl(masked, close + 1, where)
+            // Finding the class body means matching braces to the end of the class; only do it
+            // when this file can actually declare a factory.
+            val decl = findClassDecl(masked, close + 1, where, hasBody = hasFactory)
             val provider = qualify(pkg, decl.name)
             val factory = findFactory(masked, decl, where)
 
@@ -211,10 +227,12 @@ internal class SourceScanner(private val index: TypeIndex) {
     }
 
     // ── Class declarations and factory methods ────────────────────
-    private fun findClassDecl(masked: String, from: Int, where: String): ClassDecl {
+    private fun findClassDecl(masked: String, from: Int, where: String, hasBody: Boolean): ClassDecl {
         val m = DECL_RE.find(masked, from)
             ?: throw GradleException("$where: no class declaration found after @ServiceProvider")
         val name = m.groupValues[2]
+
+        if (!hasBody) return ClassDecl(name, null)
 
         val brace = masked.indexOf('{', m.range.last + 1)
         if (brace < 0 || brace - m.range.last > MAX_CLASS_HEADER) return ClassDecl(name, null)
@@ -230,9 +248,9 @@ internal class SourceScanner(private val index: TypeIndex) {
         val body = decl.body ?: return ""
         val end = body.last + 1
 
-        val idx = indexOfIn(masked, "@ProviderFactory", body.first, end)
+        val idx = indexOfIn(masked, PROVIDER_FACTORY, body.first, end)
         if (idx < 0) return ""
-        if (indexOfIn(masked, "@ProviderFactory", idx + 1, end) >= 0) {
+        if (indexOfIn(masked, PROVIDER_FACTORY, idx + 1, end) >= 0) {
             throw GradleException("$where: a class may contain only one @ProviderFactory")
         }
 
@@ -282,27 +300,79 @@ internal class SourceScanner(private val index: TypeIndex) {
         return if (i in from until to) i else -1
     }
 
-    private fun parseImports(masked: String): Pair<Map<String, String>, List<String>> {
+    /**
+     * Parses `package` / `import` declarations from the file header only (`[0, headerEnd)`), line
+     * by line. The old whole-file `MULTILINE` regex had to walk every line of the file and
+     * backtrack over the whitespace left by comment stripping; this is O(header), not O(file).
+     */
+    private fun parseImports(
+        masked: String,
+        headerEnd: Int,
+    ): Pair<Map<String, String>, List<String>> {
         val explicit = HashMap<String, String>()
         val wildcards = ArrayList<String>()
-        IMPORT_RE.findAll(masked).forEach { m ->
-            val fqn = m.groupValues[1]
-            val alias = m.groupValues[2]
-            if (fqn.endsWith(".*")) {
-                wildcards += fqn.removeSuffix(".*")
-            } else {
-                explicit[alias.ifEmpty { fqn.substringAfterLast('.') }] = fqn
+
+        var i = 0
+        while (i < headerEnd) {
+            var p = i
+            while (p < headerEnd && (masked[p] == ' ' || masked[p] == '\t')) p++
+            if (masked.startsWith(IMPORT, p) &&
+                (p + IMPORT.length == headerEnd || !masked[p + IMPORT.length].isJavaIdentifierPart())
+            ) {
+                registerImport(
+                    masked.substring(p + IMPORT.length, lineEnd(masked, p, headerEnd)),
+                    explicit,
+                    wildcards,
+                )
             }
+            val nl = masked.indexOf('\n', i)
+            if (nl < 0) break
+            i = nl + 1
         }
         return explicit to wildcards
+    }
+
+    /** Registers one `import ...` tail (the text after the keyword) as an explicit or wildcard import. */
+    private fun registerImport(
+        text: String,
+        explicit: HashMap<String, String>,
+        wildcards: MutableList<String>,
+    ) {
+        val rest = text.trim().removeSuffix(";").trim()
+        if (rest.isEmpty()) return
+
+        // Java `import static a.b.C.member` imports a member, not a type.
+        if (rest.startsWith(STATIC) && rest.getOrNull(STATIC.length)?.isWhitespace() == true) return
+
+        val asMatch = AS_TOKEN.find(rest)
+        val fqn = (if (asMatch == null) rest else rest.substring(0, asMatch.range.first)).trim()
+        if (fqn.isEmpty()) return
+
+        if (fqn.endsWith(".*")) {
+            wildcards += fqn.removeSuffix(".*")
+            return
+        }
+
+        val alias = asMatch
+            ?.let { rest.substring(it.range.last + 1).trim().removeSurrounding("`") }
+            ?.takeIf { it.isNotEmpty() }
+        explicit[alias ?: fqn.substringAfterLast('.')] = fqn
+    }
+
+    private fun lineEnd(masked: String, from: Int, limit: Int): Int {
+        val nl = masked.indexOf('\n', from)
+        return if (nl < 0 || nl > limit) limit else nl
     }
 
     companion object {
         private const val MAX_CLASS_HEADER = 300
         private const val MAX_FACTORY_WINDOW = 400
+        private const val PROVIDER_FACTORY = "@ProviderFactory"
+        private const val IMPORT = "import"
+        private const val STATIC = "static"
 
         private val PACKAGE_RE = Regex("""^\s*package\s+([\w.]+)""", RegexOption.MULTILINE)
-        private val IMPORT_RE = Regex("""^\s*import\s+([\w.*]+)(?:\s+as\s+(\w+))?""", RegexOption.MULTILINE)
+        private val AS_TOKEN = Regex("""\s+as\s+""")
         private val SERVICE_PROVIDER_RE = Regex("""@ServiceProvider\s*\(""")
         private val STRING_LITERAL = Regex(""""((?:[^"\\]|\\.)*)"""")
         private val DECL_RE = Regex("""\b(class|object|interface)\s+([A-Za-z_]\w*)""")
@@ -310,15 +380,16 @@ internal class SourceScanner(private val index: TypeIndex) {
         private val STATIC_RE = Regex("""\bstatic\b""")
         private val JAVA_FUN = Regex("""([A-Za-z_]\w*)\s*\(""")
 
-        private fun packageOf(masked: String): String =
-            PACKAGE_RE.find(masked)?.groupValues?.get(1).orEmpty()
+        private fun packageOf(masked: String, headerEnd: Int): String =
+            PACKAGE_RE.find(masked.substring(0, headerEnd))?.groupValues?.get(1).orEmpty()
 
         private fun qualify(pkg: String, name: String): String =
             if (pkg.isEmpty()) name else "$pkg.$name"
 
         /** Registers every type declared in one source file into the index, for module-wide name resolution. */
         fun collectTypes(masked: String, index: TypeIndex) {
-            val pkg = packageOf(masked)
+            val headerEnd = DECL_RE.find(masked)?.range?.first ?: masked.length
+            val pkg = packageOf(masked, headerEnd)
             DECL_RE.findAll(masked).forEach { m -> index.register(qualify(pkg, m.groupValues[2])) }
         }
     }

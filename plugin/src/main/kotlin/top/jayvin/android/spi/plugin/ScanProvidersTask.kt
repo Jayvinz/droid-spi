@@ -21,10 +21,25 @@ import org.gradle.api.tasks.TaskAction
 @CacheableTask
 abstract class ScanProvidersTask : DefaultTask() {
 
-    /** Source directories scanned for Kotlin/Java sources and META-INF/services text files. */
+    /**
+     * Source directories scanned for Kotlin/Java sources and META-INF/services text files.
+     *
+     * The plugin declares this as a filtered tree (only Kotlin, Java and service-configuration
+     * files), so Gradle fingerprints only the files the task can consume; unrelated files under
+     * the same roots do not invalidate the scan.
+     */
     @get:InputFiles
     @get:PathSensitive(PathSensitivity.RELATIVE)
     abstract val sourceDirs: ConfigurableFileCollection
+
+    /**
+     * `META-INF/services/<service>` files reachable from Java resource roots, already filtered by
+     * the plugin. Kept separate from [sourceDirs] so that changing an unrelated resource file does
+     * not re-run the scan.
+     */
+    @get:InputFiles
+    @get:PathSensitive(PathSensitivity.RELATIVE)
+    abstract val serviceConfigDirs: ConfigurableFileCollection
 
     /** Output manifest listing one `service \t provider \t key \t factory` line per entry. */
     @get:OutputFile
@@ -33,10 +48,7 @@ abstract class ScanProvidersTask : DefaultTask() {
     /** Scans the configured sources and writes a deterministic manifest. */
     @TaskAction
     fun run() {
-        val files = sourceDirs.asFileTree
-            .matching { it.include("**/*.kt", "**/*.java", "**/$META_INF_SERVICES**") }
-            .files
-            .sortedBy { it.path }
+        val files = (sourceDirs.files + serviceConfigDirs.files).sortedBy { it.path }
 
         val sourceFiles = files.filter {
             it.name.endsWith(".kt", ignoreCase = true) ||
@@ -44,10 +56,17 @@ abstract class ScanProvidersTask : DefaultTask() {
         }
         val configFiles = files - sourceFiles.toSet()
 
-        // Each source file is read once; the index and the annotation scan share the cleaned / masked text.
-        val documents = sourceFiles.map { SourceDocument(it.name, it.readText()) }
+        // Each source file is read and lexed once; the type index and the annotation scan share the
+        // cleaned / masked text. Only files that can actually produce entries are retained: the
+        // module-wide index is complete by the time they are scanned, and keeping two copies of
+        // every source file would otherwise scale the task's peak heap with the whole module.
         val index = TypeIndex()
-        documents.forEach { SourceScanner.collectTypes(it.masked, index) }
+        val documents = ArrayList<SourceDocument>()
+        sourceFiles.forEach { file ->
+            val document = SourceDocument(file.name, file.readText())
+            SourceScanner.collectTypes(document.masked, index)
+            if (document.masked.contains(SERVICE_PROVIDER_ANNOTATION)) documents += document
+        }
 
         val scanner = SourceScanner(index)
         val fromSource = documents.flatMap { scanner.scan(it) }
