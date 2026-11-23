@@ -26,3 +26,9 @@ Thumbs.db
 
 # Logs
 *.log
+
+# Layout inspector artifacts (dumps, screenshots, viewer snapshots)
+.dli/
+
+# Playwright MCP artifacts
+.playwright-mcp/
