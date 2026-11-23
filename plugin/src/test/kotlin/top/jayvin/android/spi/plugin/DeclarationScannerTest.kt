@@ -1,7 +1,6 @@
 package top.jayvin.android.spi.plugin
 
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -62,15 +61,6 @@ class DeclarationScannerTest {
         assertEquals("A", DeclarationScanner.find(src)!!.name)
         assertEquals("B", DeclarationScanner.find(src, 1)!!.name)
         assertNull(DeclarationScanner.find(src, 16))
-    }
-
-    @Test
-    fun `contains only scans the requested range`() {
-        val src = "class A\nclass B"
-
-        assertTrue(DeclarationScanner.contains(src, 0, 8))
-        assertFalse(DeclarationScanner.contains(src, 7, 8))
-        assertTrue(DeclarationScanner.contains(src, 8, src.length))
     }
 
     @Test

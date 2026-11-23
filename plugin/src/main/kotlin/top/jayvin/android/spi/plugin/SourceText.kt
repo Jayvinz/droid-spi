@@ -18,6 +18,7 @@ internal object SourceText {
     /** One preprocessed file: comment-stripped text and the structurally masked text. */
     class ProcessedSource(val clean: String, val masked: String)
 
+    /** Produces both texts in one pass. */
     fun process(src: String): ProcessedSource {
         val clean = src.toCharArray()
         val masked = src.toCharArray()
@@ -26,19 +27,25 @@ internal object SourceText {
         var state = CODE
         var quote = '"'
 
+        /** Replaces [count] characters starting at [from] in both outputs. */
+        fun blank(from: Int, count: Int) {
+            var k = from
+            while (k < from + count) clean[k++] = ' '
+            k = from
+            while (k < from + count) masked[k++] = ' '
+        }
+
         while (i < src.length) {
             val c = src[i]
             when (state) {
                 CODE -> when {
                     c == '/' && i + 1 < src.length && src[i + 1] == '/' -> {
-                        clean[i] = ' '; clean[i + 1] = ' '
-                        masked[i] = ' '; masked[i + 1] = ' '
+                        blank(i, 2)
                         i += 2
                         state = LINE_COMMENT
                     }
                     c == '/' && i + 1 < src.length && src[i + 1] == '*' -> {
-                        clean[i] = ' '; clean[i + 1] = ' '
-                        masked[i] = ' '; masked[i + 1] = ' '
+                        blank(i, 2)
                         i += 2
                         state = BLOCK_COMMENT
                     }
@@ -66,20 +73,21 @@ internal object SourceText {
                     if (c == '\n') {
                         state = CODE
                     } else {
-                        clean[i] = ' '; masked[i] = ' '
+                        clean[i] = ' '
+                        masked[i] = ' '
                     }
                     i++
                 }
 
                 BLOCK_COMMENT -> {
                     if (c == '*' && i + 1 < src.length && src[i + 1] == '/') {
-                        clean[i] = ' '; clean[i + 1] = ' '
-                        masked[i] = ' '; masked[i + 1] = ' '
+                        blank(i, 2)
                         i += 2
                         state = CODE
                     } else {
                         if (c != '\n') {
-                            clean[i] = ' '; masked[i] = ' '
+                            clean[i] = ' '
+                            masked[i] = ' '
                         }
                         i++
                     }

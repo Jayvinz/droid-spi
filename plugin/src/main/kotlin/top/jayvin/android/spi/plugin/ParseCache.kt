@@ -3,6 +3,7 @@ package top.jayvin.android.spi.plugin
 import java.io.File
 import java.security.MessageDigest
 import java.util.Base64
+import java.util.HexFormat
 
 /**
  * Per-file parse cache for [ScanProvidersTask].
@@ -15,55 +16,56 @@ import java.util.Base64
  * Any malformed record makes the whole cache unreadable: the task then re-parses every file,
  * which is always correct and only costs build time.
  *
- * **Bump `HEADER` whenever [SourceScanner.discover] changes what it records or how it resolves
- * it.** The cache file survives plugin upgrades inside `build/`, and a content hash alone cannot
- * tell that the parser implementation changed.
+ * **Bump `HEADER` whenever [SourceText.process], [DeclarationScanner], [SourceScanner.discover]
+ * or the resolve-time schema changes.** The cache file survives plugin upgrades inside `build/`,
+ * and a content hash alone cannot tell that the parser implementation changed.
  */
 internal object ParseCache {
 
-    private const val HEADER = "droid-spi-parse-cache-v2"
-    private const val COLUMNS = 7
-    private const val RECORD_END = "#"
+    private const val HEADER = "droid-spi-parse-cache-v3"
+    private const val COLUMNS = 6
 
     private val encoder = Base64.getEncoder()
     private val decoder = Base64.getDecoder()
-    private val hex = "0123456789abcdef".toCharArray()
+    private val hexFormat = HexFormat.of()
 
     /** Reads the cache, or returns an empty map when it is missing, stale or malformed. */
     fun read(file: File): Map<String, ParsedFile> {
+        if (!file.isFile) return emptyMap()
         return try {
-            if (!file.isFile) return emptyMap()
-            val lines = file.readLines()
-            if (lines.firstOrNull() != HEADER) return emptyMap()
+            file.bufferedReader(Charsets.UTF_8).use { reader ->
+                if (reader.readLine() != HEADER) return emptyMap()
 
-            val out = LinkedHashMap<String, ParsedFile>()
-            lines.drop(1).forEach { line ->
-                if (line.isEmpty()) return@forEach
-                val cols = line.split('\t')
-                require(cols.size == COLUMNS && cols[COLUMNS - 1] == RECORD_END) {
-                    "Malformed parse-cache record: $line"
+                val out = LinkedHashMap<String, ParsedFile>()
+                while (true) {
+                    val line = reader.readLine() ?: break
+                    if (line.isEmpty()) continue
+                    val cols = line.split('\t')
+                    require(cols.size == COLUMNS) { "Malformed parse-cache record: $line" }
+                    out[cols[0]] = ParsedFile(
+                        packageName = decode(cols[1]),
+                        explicitImports = decodeList(cols[2]).associate { pair ->
+                            val parts = pair.split(':')
+                            require(parts.size == 2) { "Malformed parse-cache pair: $pair" }
+                            decode(parts[0]) to decode(parts[1])
+                        },
+                        wildcards = decodeList(cols[3]).map(::decode),
+                        declaredTypes = decodeList(cols[4]).map(::decode),
+                        entries = decodeList(cols[5]).map { record ->
+                            val parts = record.split(':')
+                            require(parts.size == 5) { "Malformed parse-cache entry: $record" }
+                            PendingEntry(
+                                serviceExpr = decode(parts[0]),
+                                key = decode(parts[1]),
+                                providerSimpleName = decode(parts[2]),
+                                factory = decode(parts[3]),
+                                line = parts[4].toInt(),
+                            )
+                        },
+                    )
                 }
-                out[cols[0]] = ParsedFile(
-                    packageName = decode(cols[1]),
-                    explicitImports = decodePairs(cols[2]) { first, second ->
-                        decode(first) to decode(second)
-                    }.toMap(),
-                    wildcards = decodeList(cols[3]).map(::decode),
-                    declaredTypes = decodeList(cols[4]).map(::decode),
-                    entries = decodeList(cols[5]).map { record ->
-                        val parts = record.split(':')
-                        require(parts.size == 5) { "Malformed parse-cache entry: $record" }
-                        PendingEntry(
-                            serviceExpr = decode(parts[0]),
-                            key = decode(parts[1]),
-                            providerSimpleName = decode(parts[2]),
-                            factory = decode(parts[3]),
-                            line = parts[4].toInt(),
-                        )
-                    },
-                )
+                out
             }
-            out
         } catch (_: Exception) {
             emptyMap()
         }
@@ -89,8 +91,7 @@ internal object ParseCache {
                         encode(it.factory),
                         it.line.toString(),
                     ).joinToString(":")
-                }).append('\t')
-                append(RECORD_END).append('\n')
+                }).append('\n')
             }
         }
         file.parentFile.mkdirs()
@@ -98,15 +99,12 @@ internal object ParseCache {
     }
 
     /** Lower-case hex SHA-256 of [bytes], used as the cache key. */
-    fun sha256(bytes: ByteArray): String {
-        val digest = MessageDigest.getInstance("SHA-256").digest(bytes)
-        return buildString(digest.size * 2) {
-            digest.forEach {
-                append(hex[(it.toInt() shr 4) and 0xF])
-                append(hex[it.toInt() and 0xF])
-            }
-        }
-    }
+    fun sha256(bytes: ByteArray): String =
+        sha256(MessageDigest.getInstance("SHA-256"), bytes)
+
+    /** Same, reusing [digest] across files; `digest(bytes)` resets it. */
+    fun sha256(digest: MessageDigest, bytes: ByteArray): String =
+        hexFormat.formatHex(digest.digest(bytes))
 
     private fun encode(value: String): String =
         encoder.encodeToString(value.toByteArray(Charsets.UTF_8))
@@ -116,11 +114,4 @@ internal object ParseCache {
 
     private fun decodeList(value: String): List<String> =
         if (value.isEmpty()) emptyList() else value.split(',')
-
-    private inline fun <T> decodePairs(value: String, transform: (String, String) -> T): List<T> =
-        decodeList(value).map { pair ->
-            val parts = pair.split(':')
-            require(parts.size == 2) { "Malformed parse-cache pair: $pair" }
-            transform(parts[0], parts[1])
-        }
 }

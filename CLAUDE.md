@@ -162,9 +162,10 @@ Single Gradle build; `settings.gradle.kts` includes everything:
    `{variantName}ScanProviders` (e.g. `freeDebugScanProviders`). Source directories come from
    `variant.sources` (`java.static`, `kotlin.static`, plus `resources.static` when
    `scanMetaInfServices=true`), so `src/main` **and** the variant's build-type / flavor overlays
-   are scanned. They are declared as **filtered** input trees (`*.kt` / `*.java` /
-   `META-INF/services` under java+kotlin roots; only `META-INF/services` under resources), so
-   Gradle fingerprints only files the scan consumes. Output is
+   are scanned. They are declared as **filtered** input trees: `*.kt` / `*.java` for sources and
+   only `META-INF/services` for service configuration (from java/kotlin roots always, from
+   resources when `scanMetaInfServices=true`), so Gradle fingerprints only files the scan
+   consumes. Output is
    `build/generated/spi/{variantName}/services.txt`, plus `parsed.txt`: a per-file parse cache
    keyed by the **content hash** (not path), so unchanged files are reused instead of re-lexed and
    a cache restored on another machine stays valid.
@@ -316,7 +317,8 @@ against AGP 8.7.3 and only uses APIs that keep the same descriptors across 8.x a
   into the final APK/AAB.
 - AGP 8.0–8.3 (and 7.4) expose only `SourceDirectories.Flat.all`; `static` arrived in 8.4.
   `addFilteredSourceDirs` checks for the `static` method reflectively and falls back to `all`;
-  the fallback excludes `**/build/generated/**` because `all` also contains generated sources.
+  the fallback drops generated roots (paths under `build/generated`) because `all` also contains
+  them.
 - `runtime` sets `aarMetadata.minCompileSdk = 24`. Without it the AAR metadata defaults to the
   module's compileSdk (35), and `checkDebugAarMetadata` rejects AGP 8.0–8.3 consumers, whose
   maximum recommended compileSdk is 33.

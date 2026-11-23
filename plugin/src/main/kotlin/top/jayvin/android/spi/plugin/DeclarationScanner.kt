@@ -24,10 +24,6 @@ internal object DeclarationScanner {
     private const val OBJECT = "object"
     private const val INTERFACE = "interface"
 
-    /** Index of the first declaration's keyword in `[0, to)`, or -1. */
-    fun firstStart(masked: String, to: Int = masked.length): Int =
-        find(masked, 0, to)?.start ?: -1
-
     /** First declaration in `[from, to)`, or null. */
     fun find(masked: String, from: Int = 0, to: Int = masked.length): Declaration? {
         var found: Declaration? = null
@@ -45,10 +41,6 @@ internal object DeclarationScanner {
             false
         }
     }
-
-    /** Whether any declaration starts in `[from, to)`. */
-    fun contains(masked: String, from: Int, to: Int): Boolean =
-        find(masked, from, to) != null
 
     private fun scan(masked: String, from: Int, to: Int, onMatch: (Declaration) -> Boolean) {
         var i = from

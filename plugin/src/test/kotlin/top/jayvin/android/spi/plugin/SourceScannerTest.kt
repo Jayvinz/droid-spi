@@ -8,13 +8,11 @@ import org.junit.Test
 class SourceScannerTest {
 
     private fun scan(vararg files: Pair<String, String>): List<ProviderEntry> {
-        val index = TypeIndex()
-        val scanner = SourceScanner(index)
+        val scanner = SourceScanner(TypeIndex())
         val parsed = files.map { (name, text) ->
             name to scanner.discover(SourceDocument(name, text))
         }
-        parsed.forEach { (_, file) -> file.declaredTypes.forEach(index::register) }
-        return parsed.flatMap { (name, file) -> scanner.resolve(file, name) }
+        return scanner.resolveAll(parsed)
     }
 
     private fun entry(service: String, provider: String, key: String = "", factory: String = "") =

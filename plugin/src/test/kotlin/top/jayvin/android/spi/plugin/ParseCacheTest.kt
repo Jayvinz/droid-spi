@@ -2,16 +2,20 @@ package top.jayvin.android.spi.plugin
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
+import org.junit.Rule
 import org.junit.Test
+import org.junit.rules.TemporaryFolder
 import java.io.File
 
 class ParseCacheTest {
 
+    @get:Rule
+    val temporaryFolder = TemporaryFolder()
+
     private fun parsed(text: String): ParsedFile =
         SourceScanner(TypeIndex()).discover(SourceDocument("File.kt", text))
 
-    private fun tempFile(name: String): File =
-        File.createTempFile(name, ".txt").apply { deleteOnExit() }
+    private fun tempFile(name: String): File = temporaryFolder.newFile("$name.txt")
 
     @Test
     fun `round-trips entries and resolves identically`() {
@@ -31,23 +35,23 @@ class ParseCacheTest {
 
         val file = tempFile("spi-parse-cache")
         val model = parsed(source)
-        val index = TypeIndex()
-        model.declaredTypes.forEach(index::register)
-        val expected = SourceScanner(index).resolve(model, "HomeImpl.kt")
+        val expected = SourceScanner(TypeIndex()).resolveAll(listOf("HomeImpl.kt" to model))
 
         val hash = ParseCache.sha256(source.toByteArray())
         ParseCache.write(file, mapOf(hash to model))
         val restored = ParseCache.read(file)
 
         assertEquals(setOf(hash), restored.keys)
-        assertEquals(expected, SourceScanner(index).resolve(restored.getValue(hash), "HomeImpl.kt"))
+        val actual = SourceScanner(TypeIndex())
+            .resolveAll(listOf("HomeImpl.kt" to restored.getValue(hash)))
+        assertEquals(expected, actual)
         assertEquals("vip", expected.single().key)
         assertEquals("create", expected.single().factory)
     }
 
     @Test
     fun `a file without entries round-trips`() {
-        // Its record has an empty entries column; the sentinel keeps the column count stable.
+        // Its record has an empty entries column; the column count must still be stable.
         val source = "package com.example\n\nclass Plain\n"
         val file = tempFile("spi-parse-cache-plain")
         val model = parsed(source)
@@ -62,10 +66,10 @@ class ParseCacheTest {
 
     @Test
     fun `a missing or malformed cache is ignored`() {
-        assertTrue(ParseCache.read(File("spi-cache-does-not-exist")).isEmpty())
+        assertTrue(ParseCache.read(File(temporaryFolder.root, "missing.txt")).isEmpty())
 
         val file = tempFile("spi-parse-cache-bad")
-        file.writeText("droid-spi-parse-cache-v2\nnot-a-record\n")
+        file.writeText("droid-spi-parse-cache-v3\nnot-a-record\n")
         assertTrue(ParseCache.read(file).isEmpty())
 
         val stale = tempFile("spi-parse-cache-stale")
