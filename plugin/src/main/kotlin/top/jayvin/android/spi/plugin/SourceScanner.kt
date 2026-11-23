@@ -24,6 +24,30 @@ internal data class ProviderEntry(
 internal const val SERVICE_PROVIDER_ANNOTATION = "@ServiceProvider"
 
 /**
+ * One file's parse result. It depends only on the file text — never on the file name — so it can
+ * be cached by content hash: renamed/moved files still hit, and a cache restored from the build
+ * cache on another machine stays valid. Diagnostics add the current file name at resolve time.
+ */
+internal class ParsedFile(
+    val packageName: String,
+    val explicitImports: Map<String, String>,
+    val wildcards: List<String>,
+    /** Fully-qualified names of every type declared in the file, for the module-wide index. */
+    val declaredTypes: List<String>,
+    val entries: List<PendingEntry>,
+)
+
+/** One `@ServiceProvider` occurrence whose service expression still needs the module-wide index. */
+internal class PendingEntry(
+    val serviceExpr: String,
+    val key: String,
+    val providerSimpleName: String,
+    val factory: String,
+    /** 1-based line of the annotation, used for diagnostics. */
+    val line: Int,
+)
+
+/**
  * An index of all top-level types declared in this module, used to "guess the FQN even without
  * an explicit import". It is only a hint; when it cannot guess, it falls back to the same package.
  */
@@ -62,15 +86,15 @@ internal class SourceScanner(private val index: TypeIndex) {
     /** A null [body] means the class has no brace-delimited body (Kotlin `class Foo : Bar`). */
     private data class ClassDecl(val name: String, val body: IntRange?)
 
-    /** Scans one preprocessed source document for `@ServiceProvider` entries. */
-    fun scan(doc: SourceDocument): List<ProviderEntry> {
+    /**
+     * Parses one preprocessed document without resolving service names.
+     *
+     * Declared types are always collected (the module index needs every file, including files
+     * without annotations); imports and annotations are only parsed when the cheap marker check
+     * passes. The result is path-independent so it can be reused from the parse cache.
+     */
+    fun discover(doc: SourceDocument): ParsedFile {
         val masked = doc.masked
-
-        // A substring check is an order of magnitude cheaper than a regex sweep, and most source
-        // files contain no annotation at all; skip them before touching imports or the class body.
-        if (!masked.contains(SERVICE_PROVIDER_ANNOTATION)) return emptyList()
-
-        val clean = doc.clean
 
         // Imports can only appear before the first top-level declaration, so package/import
         // parsing is bounded to the file header. Sweeping the whole file with the import regex
@@ -78,10 +102,21 @@ internal class SourceScanner(private val index: TypeIndex) {
         // the regex has to walk and backtrack over.
         val headerEnd = DECL_RE.find(masked)?.range?.first ?: masked.length
         val pkg = packageOf(masked, headerEnd)
+
+        val declared = ArrayList<String>()
+        DECL_RE.findAll(masked).forEach { declared += qualify(pkg, it.groupValues[2]) }
+
+        // A substring check is an order of magnitude cheaper than a regex sweep, and most source
+        // files contain no annotation at all; skip them before touching imports or the class body.
+        if (!masked.contains(SERVICE_PROVIDER_ANNOTATION)) {
+            return ParsedFile(pkg, emptyMap(), emptyList(), declared, emptyList())
+        }
+
+        val clean = doc.clean
         val (explicitImports, wildcards) = parseImports(masked, headerEnd)
         val hasFactory = masked.contains(PROVIDER_FACTORY)
 
-        val out = ArrayList<ProviderEntry>()
+        val entries = ArrayList<PendingEntry>()
         var cursor = 0
         var line = 1
 
@@ -98,22 +133,41 @@ internal class SourceScanner(private val index: TypeIndex) {
         SERVICE_PROVIDER_RE.findAll(masked).forEach { m ->
             val open = m.range.last
             val close = matchPair(masked, open, '(', ')')
-            val where = "${doc.fileName}:${lineAt(m.range.first)}"
+            val annotationLine = lineAt(m.range.first)
+            val where = "${doc.fileName}:$annotationLine"
 
             val args = clean.substring(open + 1, close)
             val (serviceExpr, key) = parseArgs(args, where)
-            val service = resolve(serviceExpr, pkg, explicitImports, wildcards, doc.fileName, where)
 
             // Finding the class body means matching braces to the end of the class; only do it
             // when this file can actually declare a factory.
             val decl = findClassDecl(masked, close + 1, where, hasBody = hasFactory)
-            val provider = qualify(pkg, decl.name)
             val factory = findFactory(masked, decl, where)
 
-            out += ProviderEntry(service, provider, key, factory)
+            entries += PendingEntry(serviceExpr, key, decl.name, factory, annotationLine)
         }
-        return out
+        return ParsedFile(pkg, explicitImports, wildcards, declared, entries)
     }
+
+    /** Resolves a [ParsedFile]'s service expressions against this scanner's module-wide index. */
+    fun resolve(parsed: ParsedFile, fileName: String): List<ProviderEntry> =
+        parsed.entries.map { entry ->
+            val where = "$fileName:${entry.line}"
+            val service = resolveService(
+                entry.serviceExpr,
+                parsed.packageName,
+                parsed.explicitImports,
+                parsed.wildcards,
+                fileName,
+                where,
+            )
+            ProviderEntry(
+                service,
+                qualify(parsed.packageName, entry.providerSimpleName),
+                entry.key,
+                entry.factory,
+            )
+        }
 
     // ── Argument parsing ──────────────────────────────────────────
     private fun parseArgs(args: String, where: String): Pair<String, String> {
@@ -200,7 +254,7 @@ internal class SourceScanner(private val index: TypeIndex) {
         return clean
     }
 
-    private fun resolve(
+    private fun resolveService(
         expr: String,
         pkg: String,
         explicitImports: Map<String, String>,
@@ -385,12 +439,5 @@ internal class SourceScanner(private val index: TypeIndex) {
 
         private fun qualify(pkg: String, name: String): String =
             if (pkg.isEmpty()) name else "$pkg.$name"
-
-        /** Registers every type declared in one source file into the index, for module-wide name resolution. */
-        fun collectTypes(masked: String, index: TypeIndex) {
-            val headerEnd = DECL_RE.find(masked)?.range?.first ?: masked.length
-            val pkg = packageOf(masked, headerEnd)
-            DECL_RE.findAll(masked).forEach { m -> index.register(qualify(pkg, m.groupValues[2])) }
-        }
     }
 }

@@ -92,6 +92,7 @@ class SpiPlugin : Plugin<Project> {
                 )
             }
             t.manifestFile.set(project.spiVariantDir(variantName).map { it.file("services.txt") })
+            t.parseCacheFile.set(project.spiVariantDir(variantName).map { it.file("parsed.txt") })
         }
         val manifest = task.flatMap { it.manifestFile }
 

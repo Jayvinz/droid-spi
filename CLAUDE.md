@@ -165,7 +165,9 @@ Single Gradle build; `settings.gradle.kts` includes everything:
    are scanned. They are declared as **filtered** input trees (`*.kt` / `*.java` /
    `META-INF/services` under java+kotlin roots; only `META-INF/services` under resources), so
    Gradle fingerprints only files the scan consumes. Output is
-   `build/generated/spi/{variantName}/services.txt`.
+   `build/generated/spi/{variantName}/services.txt`, plus `parsed.txt`: a per-file parse cache
+   keyed by the **content hash** (not path), so unchanged files are reused instead of re-lexed and
+   a cache restored on another machine stays valid.
    Manifest format: `service \t provider \t key \t factory` (an empty key means the default variant).
 2. **Application modules only** register `{variantName}GenerateServiceConfiguration` per variant.
    It reads the manifests of every compatible module variant, validates non-empty key uniqueness

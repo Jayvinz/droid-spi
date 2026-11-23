@@ -9,11 +9,12 @@ class SourceScannerTest {
 
     private fun scan(vararg files: Pair<String, String>): List<ProviderEntry> {
         val index = TypeIndex()
-        val documents = files.map { (name, text) ->
-            SourceDocument(name, text).also { SourceScanner.collectTypes(it.masked, index) }
-        }
         val scanner = SourceScanner(index)
-        return documents.flatMap { scanner.scan(it) }
+        val parsed = files.map { (name, text) ->
+            name to scanner.discover(SourceDocument(name, text))
+        }
+        parsed.forEach { (_, file) -> file.declaredTypes.forEach(index::register) }
+        return parsed.flatMap { (name, file) -> scanner.resolve(file, name) }
     }
 
     private fun entry(service: String, provider: String, key: String = "", factory: String = "") =

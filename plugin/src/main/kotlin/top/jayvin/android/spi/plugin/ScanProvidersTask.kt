@@ -45,6 +45,13 @@ abstract class ScanProvidersTask : DefaultTask() {
     @get:OutputFile
     abstract val manifestFile: RegularFileProperty
 
+    /**
+     * Per-file parse cache keyed by content hash. On a run where only a few sources changed, the
+     * unchanged files are reused from here instead of being lexed again.
+     */
+    @get:OutputFile
+    abstract val parseCacheFile: RegularFileProperty
+
     /** Scans the configured sources and writes a deterministic manifest. */
     @TaskAction
     fun run() {
@@ -56,20 +63,33 @@ abstract class ScanProvidersTask : DefaultTask() {
         }
         val configFiles = files - sourceFiles.toSet()
 
-        // Each source file is read and lexed once; the type index and the annotation scan share the
-        // cleaned / masked text. Only files that can actually produce entries are retained: the
-        // module-wide index is complete by the time they are scanned, and keeping two copies of
-        // every source file would otherwise scale the task's peak heap with the whole module.
+        // Reuse the previous parse for unchanged content. The cache is keyed by SHA-256 of the
+        // file bytes, so renamed files still hit and a cache restored on another machine stays
+        // valid. Reading and hashing all sources is far cheaper than lexing them; only changed
+        // files reach the scanner.
+        val previous = ParseCache.read(parseCacheFile.get().asFile)
+        val current = LinkedHashMap<String, ParsedFile>()
+        val parsed = ArrayList<Pair<String, ParsedFile>>()
         val index = TypeIndex()
-        val documents = ArrayList<SourceDocument>()
+        val scanner = SourceScanner(index)
+        var lexed = 0
+        var reused = 0
         sourceFiles.forEach { file ->
-            val document = SourceDocument(file.name, file.readText())
-            SourceScanner.collectTypes(document.masked, index)
-            if (document.masked.contains(SERVICE_PROVIDER_ANNOTATION)) documents += document
+            val bytes = file.readBytes()
+            val hash = ParseCache.sha256(bytes)
+            val cached = previous[hash]
+            if (cached != null) reused++ else lexed++
+            val model = cached ?: scanner.discover(
+                SourceDocument(file.name, String(bytes, Charsets.UTF_8)),
+            )
+            current[hash] = model
+            // Discovery never reads the index, so registering as we go is fine: resolution runs
+            // only after every file has contributed its declared types.
+            model.declaredTypes.forEach(index::register)
+            parsed += file.name to model
         }
 
-        val scanner = SourceScanner(index)
-        val fromSource = documents.flatMap { scanner.scan(it) }
+        val fromSource = parsed.flatMap { (name, model) -> scanner.resolve(model, name) }
         val fromServiceConfig = ServiceConfigScanner.scan(configFiles)
 
         // The same provider may be declared both by an annotation and by a third-party jar's
@@ -85,12 +105,16 @@ abstract class ScanProvidersTask : DefaultTask() {
         val out = manifestFile.get().asFile
         out.parentFile.mkdirs()
         out.writeText(text)
+        ParseCache.write(parseCacheFile.get().asFile, current)
+
         logger.info(
-            "spi: scan finished for {}, {} providers (source {} / SPI config {}) → {}",
+            "spi: scan finished for {}, {} providers (source {} / SPI config {}; {} files lexed, {} reused) → {}",
             path,
             entries.size,
             fromSource.size,
             fromServiceConfig.size,
+            lexed,
+            reused,
             out.name,
         )
     }
