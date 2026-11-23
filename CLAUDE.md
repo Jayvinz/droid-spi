@@ -125,7 +125,8 @@ The release workflow verifies that the tag equals `v$spiVersion`, checks the req
 and then:
 
 - publishes a signed bundle of `annotation` and `runtime` to **Maven Central** through the
-  Central Portal Publisher API (`publishingType=AUTOMATIC`), polling until `PUBLISHED`;
+  Central Portal Publisher API (`publishingType=AUTOMATIC`); the workflow succeeds once the
+  upload is accepted and does not wait for `PUBLISHED` (Central validates asynchronously);
 - publishes the Gradle plugin to the **Gradle Plugin Portal** with `:plugin:publishPlugins`;
 - attaches the jars/AAR to the GitHub Release.
 

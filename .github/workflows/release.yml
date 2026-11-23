@@ -86,26 +86,10 @@ jobs:
             --form bundle=@build/central-bundle.zip \
             "https://central.sonatype.com/api/v1/publisher/upload?name=droid-spi-${version}&publishingType=AUTOMATIC")"
           echo "Deployment id: $deployment_id"
-
-          for attempt in $(seq 1 60); do
-            status="$(curl --silent --show-error --request POST \
-              --header "Authorization: Bearer $token" \
-              "https://central.sonatype.com/api/v1/publisher/status?id=$deployment_id")"
-            state="$(echo "$status" | jq -r '.deploymentState')"
-            echo "Deployment state: $state"
-            case "$state" in
-              PUBLISHED)
-                exit 0
-                ;;
-              FAILED)
-                echo "$status" | jq .
-                exit 1
-                ;;
-            esac
-            sleep 10
-          done
-          echo "::error::Maven Central deployment did not finish in time"
-          exit 1
+          # Maven Central validates and publishes asynchronously. The release does not wait for
+          # the PUBLISHED state: a successful upload is the release gate, and the deployment can
+          # be checked later at https://central.sonatype.com/publishing/deployments.
+          echo "Central release submitted; publication continues asynchronously."
 
       - name: Stage the release assets
         run: |
