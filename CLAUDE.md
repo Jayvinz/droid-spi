@@ -70,7 +70,7 @@ from it and stays `top.jayvin.android.spi`):
 ./gradlew :app:assembleFreeDebug :app:assembleVipDebug :app:assembleFreeRelease :app:assembleVipRelease
 ./gradlew :app:bundleFreeDebug     # demo AAB (includes the production split)
 
-# Runtime unit tests (all) and the plugin's merge-validation tests
+# Runtime unit tests and the plugin's unit + TestKit functional tests
 ./gradlew :runtime:testDebugUnitTest
 ./gradlew :plugin:test
 # A single test class / a single test method
@@ -83,9 +83,11 @@ fresh clone fails**; run the publish command first. On a fresh clone (or after d
 `local-repo/`) that publish needs `--configure-on-demand`, because the demo modules apply the
 plugin being published: `./gradlew :annotation:publish :runtime:publish :plugin:publish
 --configure-on-demand`. The flag is unnecessary once the plugin exists in `local-repo/`.
-`plugin` has no test sources;
-the `runtime` tests are plain JVM unit tests that use a fake `ProviderConfiguration` to
-simulate "module not installed", so no device or emulator is needed.
+`plugin` tests are unit tests for the scanner / parse cache / table plus Gradle TestKit
+functional tests: the task-level scan/generate builds need neither AGP nor the SDK, and
+`AgpFunctionalTest` applies AGP to a minimal app when an SDK is configured (skipped otherwise,
+adds ~20-30 s); the `runtime` tests are plain JVM unit tests that use a fake `ProviderConfiguration`
+to simulate "module not installed", so no device or emulator is needed.
 
 Verify the generated artifact (per variant; the path uses the variant name):
 
@@ -101,9 +103,11 @@ After any change to scanning, aggregation, artifact wiring, or caching, run the 
 ```bash
 ./gradlew :annotation:publish :runtime:publish :plugin:publish
 ./gradlew :runtime:testDebugUnitTest --rerun-tasks
+./gradlew :plugin:test
 ./gradlew clean :app:assembleFreeDebug :app:assembleVipDebug :app:assembleFreeRelease :app:assembleVipRelease
 ./gradlew :app:assembleFreeDebug --configuration-cache
 ./gradlew :app:assembleFreeDebug --configuration-cache -Dorg.gradle.unsafe.isolated-projects=true
+bash scripts/verify-compat.sh
 ```
 
 Then add and remove a temporary `@ServiceProvider` once with each cache mode to prove the
@@ -162,7 +166,13 @@ Single Gradle build; `settings.gradle.kts` includes everything:
    `{variantName}ScanProviders` (e.g. `freeDebugScanProviders`). Source directories come from
    `variant.sources` (`java.static`, `kotlin.static`, plus `resources.static` when
    `scanMetaInfServices=true`), so `src/main` **and** the variant's build-type / flavor overlays
-   are scanned. Output is `build/generated/spi/{variantName}/services.txt`.
+   are scanned. They are declared as **filtered** input trees: `*.kt` / `*.java` for sources and
+   only `META-INF/services` for service configuration (from java/kotlin roots always, from
+   resources when `scanMetaInfServices=true`), so Gradle fingerprints only files the scan
+   consumes. Output is
+   `build/generated/spi/{variantName}/services.txt`, plus `parsed.txt`: a per-file parse cache
+   keyed by the **content hash** (not path), so unchanged files are reused instead of re-lexed and
+   a cache restored on another machine stays valid.
    Manifest format: `service \t provider \t key \t factory` (an empty key means the default variant).
 2. **Application modules only** register `{variantName}GenerateServiceConfiguration` per variant.
    It reads the manifests of every compatible module variant, validates non-empty key uniqueness
@@ -249,8 +259,11 @@ These are correctness red lines, not style preferences:
 
 ## Scanner boundaries (read before changing `SourceScanner`)
 
-- Source code is parsed with regexes plus bracket matching, not an AST. `SourceText`
-  strips comments and masks string contents so structure matching cannot be confused.
+- Source code is parsed with lightweight character scans and regexes plus bracket matching, not
+  an AST. `SourceText` produces the comment-stripped and string-masked texts in **one pass**, and
+  `DeclarationScanner` finds `class` / `object` / `interface` declarations with the same matching
+  rules as the old `DECL_RE` regex without the regex cost. Structure matching must never be
+  confused by comments or string contents.
 - `import a.b.*` is only resolvable when the type is imported explicitly or is unique in the
   module's `TypeIndex`; otherwise the build fails and asks for an explicit import / FQN.
 - Nested classes and `typealias` are not supported as services.
@@ -307,8 +320,9 @@ against AGP 8.7.3 and only uses APIs that keep the same descriptors across 8.x a
   source- and binary-compatible, and AGP 9 routes appended CLASSES through `userAddedClasses`
   into the final APK/AAB.
 - AGP 8.0–8.3 (and 7.4) expose only `SourceDirectories.Flat.all`; `static` arrived in 8.4.
-  `staticSourceDirs` catches `NoSuchMethodError` and falls back to `all`, so on those versions
-  generated source directories can enter the scan.
+  `addFilteredSourceDirs` checks for the `static` method reflectively and falls back to `all`;
+  the fallback drops generated roots (paths under `build/generated`) because `all` also contains
+  them.
 - `runtime` sets `aarMetadata.minCompileSdk = 24`. Without it the AAR metadata defaults to the
   module's compileSdk (35), and `checkDebugAarMetadata` rejects AGP 8.0–8.3 consumers, whose
   maximum recommended compileSdk is 33.
@@ -330,7 +344,8 @@ against AGP 8.7.3 and only uses APIs that keep the same descriptors across 8.x a
 - `compat/agp8/` (AGP 8.7.3, Gradle 8.9) and `compat/agp80/` (AGP 8.0.2, Gradle 8.2) are
   standalone fixtures that consume `local-repo`; both use Kotlin 2.0.21 and share their demo
   providers from `compat/shared/demo`. Run them after publishing the framework to keep the 8.x
-  lines covered; see their `README.md` files.
+  lines covered; see their `README.md` files. `bash scripts/verify-compat.sh` publishes, builds
+  both fixtures and asserts the generated class and manifest contents.
 - **AGP 7.x is deliberately unsupported** (decided 2026-11-20 after a feasibility study):
   - 7.0–7.3 have no `ScopedArtifacts`/`ScopedArtifact` (and `Sources` only appears in 7.2), so
     the manifest aggregation and CLASSES append cannot run there at all.
